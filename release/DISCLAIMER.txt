@@ -1,0 +1,13 @@
+GRW ANALOGUE MOVEMENT MOD — RISK NOTICE AND DISCLAIMER
+
+This is an unofficial community modification and is not affiliated with, endorsed by, or supported by Ubisoft, Easy Anti-Cheat/Epic Games, or Nexus Mods.
+
+The software modifies the memory of the running Ghost Recon Wildlands process. It is intended exclusively for offline single-player use. Using process-memory modification tools may violate Ubisoft's terms or trigger anti-cheat, integrity, telemetry, or security systems. No configuration—including SayNoToEAC, firewall isolation, or disconnecting from the internet—can guarantee that an account will not be detected, restricted, suspended, or terminated.
+
+DO NOT USE THIS SOFTWARE IN CO-OP, GHOST WAR, OR ANY ONLINE SESSION.
+
+The software is provided "as is", without warranty of any kind. To the maximum extent permitted by law, the authors and contributors are not responsible for bans, account restrictions, loss of access, corrupted or lost saves, crashes, instability, data loss, security-software alerts, network disruption, or any other direct or indirect damage arising from installation or use.
+
+Back up saves before use. Verify firewall isolation. Confirm Easy Anti-Cheat is not active. Restore the hooks with F5 and exit Wildlands before reconnecting or entering any online mode.
+
+By installing or using this software, you acknowledge these risks and accept sole responsibility for the consequences.

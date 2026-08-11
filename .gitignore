@@ -1,0 +1,36 @@
+# .NET build output
+**/bin/
+**/obj/
+*.dll
+*.exe
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+
+# Release packages and third-party tools
+/artifacts/
+/tools/
+*.zip
+*.7z
+
+# Runtime captures, scanner output, and screenshots
+*.log
+*.err
+*.png
+**/scanner-results/
+**/weapon-probe-captures/
+**/captures/
+
+# IDE and user-local files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Temporary files
+*.tmp
+*.bak
+*~
