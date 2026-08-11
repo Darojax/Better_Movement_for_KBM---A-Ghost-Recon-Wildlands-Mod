@@ -2,9 +2,11 @@
 
 > **Development preview:** this project is under active play-testing and is not ready for public distribution.
 
+![Nomad in Ghost Recon Wildlands](assets/images/nomad_1.png)
+
 A Windows mod that gives keyboard-and-mouse players granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*. The mouse wheel traverses one continuous range from a very slow walk to full jogging speed, while retaining the familiar `X` walk/jog shortcut.
 
-## Current behavior
+Current behavior
 
 - 12 walking levels from `0.05` to `0.60`.
 - 9 jogging levels from `0.70` to `1.00`.

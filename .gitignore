@@ -17,6 +17,7 @@
 *.log
 *.err
 *.png
+!assets/images/nomad_1.png
 **/scanner-results/
 **/weapon-probe-captures/
 **/captures/
