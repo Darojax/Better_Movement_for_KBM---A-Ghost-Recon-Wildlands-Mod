@@ -2,7 +2,7 @@
 
 > **Development preview:** this project is under active play-testing and is not ready for public distribution.
 
-<img src="assets/images/nomad_1.png" alt="Nomad in Ghost Recon Wildlands" align="left" width="280" hspace="16">
+<img src="assets/images/nomad_1.png" alt="Nomad in Ghost Recon Wildlands" align="left" width="220" hspace="16">
 
 A Windows mod that gives keyboard-and-mouse players granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*.
 
