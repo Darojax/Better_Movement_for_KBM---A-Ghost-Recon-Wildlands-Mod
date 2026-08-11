@@ -1,6 +1,6 @@
 # GRW Analogue Movement Mod
 
-> **Development preview — not ready for distribution.** Gameplay behavior is still being redesigned and play-tested. See [`TODO.md`](../TODO.md) in the source project.
+> **Development preview — not ready for distribution.** Gameplay behavior is undergoing extended play-testing. See [`TODO.md`](../TODO.md) in the source project.
 
 Granular mouse-wheel movement control for the Windows version of **Tom Clancy's Ghost Recon Wildlands**.
 
@@ -12,17 +12,18 @@ Read [DISCLAIMER.txt](DISCLAIMER.txt) before use.
 
 ## Movement behavior
 
-- Walk HIP: 12 levels from `0.05` to `0.60`.
-- Jog HIP: 9 levels from `0.70` to `1.00`.
-- Walk ADS: 12 correlated levels using the calibrated `1.6875–3.375` curve.
-- Jog ADS: fixed at the globally calibrated `4.10`.
+- Walk HIP: 16 near-uniform levels from `0.05` to `0.60`, including the exact vanilla-walk anchor at `0.35`.
+- Jog HIP: 11 evenly spaced levels from `0.70` to `1.00` in `0.03` steps.
 - Mouse wheel traverses one unified ladder from the slowest walk through the fastest jog, regardless of the game's hidden native gait.
-- While in jog ADS, the visible speed remains fixed while the wheel adjusts the underlying unified HIP level restored on ADS release.
+- Standing walk ADS follows a calibrated curve from coefficient `1.81` at vanilla walk to `2.48` at maximum walk, extrapolated through the lower walk levels.
+- Standing jog ADS follows the underlying HIP level and is capped at coefficient `3.40` to keep the fastest ADS movement believable and stable.
+- Crouching is detected from the game's native stance state. Crouch walk ADS uses a proportional `0.84–1.68` curve; crouch jog ADS uses coefficient `2.70`.
+- Scrolling while ADS still adjusts the unified HIP level restored on ADS release.
 - From a walking-range speed, `X` jumps to vanilla full jog. From a jogging-range speed, `X` jumps to vanilla walk. No separate custom gait speeds are saved.
 - Releasing Sprint/Shift returns movement to vanilla full jog.
 - `F5` restores original game instructions and exits the runtime.
 
-Small terrain-dependent speed changes on slopes are native Wildlands behavior.
+Small terrain-dependent speed changes on slopes are native Wildlands behavior. Wildlands also applies weapon-dependent movement differences after the mod's shared ADS coefficient; the current tuning has been validated with an LMG, assault rifle, and pistol rather than normalized per weapon class.
 
 ## Requirements
 

@@ -19,11 +19,15 @@ const int VkShift = 0x10, VkLShift = 0xA0, VkRShift = 0xA1;
 const int VkRightButton = 0x02;
 const int VkWalkJogToggle = 0x58;
 const float WalkMinimumScale = 1.0f / 7.0f, WalkMaximumScale = 12.0f / 7.0f;
-const float JogMinimumScale = 0.70f, JogMaximumScale = 1.00f, JogStepScale = 0.0375f;
-const int WalkLevelCount = 12, JogLevelCount = 9;
-const int VanillaWalkLevelIndex = 6, JogMinimumLevelIndex = WalkLevelCount, JogMaximumLevelIndex = WalkLevelCount + JogLevelCount - 1;
+const float JogMinimumScale = 0.70f, JogMaximumScale = 1.00f, JogStepScale = 0.03f;
+const int WalkLevelCount = 16, JogLevelCount = 11;
+const int VanillaWalkLevelIndex = 8, JogMinimumLevelIndex = WalkLevelCount, JogMaximumLevelIndex = WalkLevelCount + JogLevelCount - 1;
 const float WalkAdsMinimum = 1.6875144f, WalkAdsMaximum = 3.375f;
 const float JogAdsMaximum = 4.10f;
+const float StandingWalkAdsAtVanillaWalk = 1.81f, StandingWalkAdsAtMaximum = 2.48f;
+const float StandingJogAdsAtMinimum = 3.00f, StandingJogAdsAtMidpoint = 3.50f, StandingAdsCap = 3.40f;
+const float CrouchWalkAdsMinimum = 0.84f, CrouchWalkAdsMaximum = 1.68f;
+const float CrouchJogAds = 2.70f;
 
 using Process game = Process.GetProcessesByName("GRW").SingleOrDefault()
     ?? throw new InvalidOperationException("Exactly one GRW process must be running.");
@@ -31,6 +35,8 @@ bool calibrationMode = args.Contains("--calibrate", StringComparer.OrdinalIgnore
 bool adsCalibrationMode = args.Contains("--ads-calibrate", StringComparer.OrdinalIgnoreCase);
 bool weaponAdsProbeMode = args.Contains("--weapon-ads-probe", StringComparer.OrdinalIgnoreCase);
 bool verbose = args.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
+if (new[] { calibrationMode, adsCalibrationMode, weaponAdsProbeMode }.Count(enabled => enabled) > 1)
+    throw new InvalidOperationException("Select only one calibration or probe mode at a time.");
 ulong imageBase = unchecked((ulong)(game.MainModule?.BaseAddress.ToInt64() ?? 0));
 ulong controlSite = imageBase + (ulong)ControlSiteRva;
 ulong probeSite = imageBase + (ulong)ProbeSiteRva;
@@ -110,21 +116,22 @@ try
     const int WalkAdsSelectedOffset = 4108, JogAdsSelectedOffset = 4112;
     const int WalkAdsLowOffset = 4116, WalkAdsHighOffset = 4120, JogAdsLowOffset = 4124, JogAdsHighOffset = 4128;
     const int AdsEnabledOffset = 4132, AdsModeJogOffset = 4136, AdsVectorOffset = 4140;
-    const int AdsOutputObjectOffset = 4156, AdsOutputValueOffset = 4164, AdsOwnerOffset = 4168;
-    byte[] trampoline = new byte[4176];
+    const int AdsOutputObjectOffset = 4156, AdsOutputValueOffset = 4164, AdsOwnerOffset = 4168, ProbeOwnerOffset = 4176;
+    byte[] trampoline = new byte[4184];
     trampoline[0] = 0xE8; // call original magnitude getter
     BitConverter.GetBytes(CheckedRelative(cave, 5, originalGetter)).CopyTo(trampoline, 1);
     byte[] controlCode = [0xF3, 0x0F, 0x59, 0x05, 0xF7, 0x0F, 0x00, 0x00, 0xC3]; // mulss xmm0,[selected]; ret
     controlCode.CopyTo(trampoline, 5);
-    byte[] probeCode =
-    [
-        0xF3, 0x0F, 0x11, 0x05, 0xB8, 0x0F, 0x00, 0x00, // movss [rip+raw],xmm0
-        0xF3, 0x0F, 0x11, 0x46, 0x60,                   // original store
-        0xE9, 0x00, 0x00, 0x00, 0x00                    // jmp back
-    ];
-    probeCode.CopyTo(trampoline, ProbeCodeOffset);
-    const int ProbeReturnJumpOffset = ProbeCodeOffset + 13;
-    BitConverter.GetBytes(CheckedRelative(cave + (ulong)ProbeReturnJumpOffset, 5, probeSite + (ulong)originalProbe.Length)).CopyTo(trampoline, ProbeReturnJumpOffset + 1);
+    int probe = ProbeCodeOffset;
+    void ProbeBytes(params byte[] bytes) { bytes.CopyTo(trampoline, probe); probe += bytes.Length; }
+    ProbeBytes(0x48, 0x89, 0x35);                         // mov [rip+owner],rsi
+    ProbeBytes(BitConverter.GetBytes(checked((int)((long)(cave + ProbeOwnerOffset) - (long)(cave + (ulong)probe + 4)))));
+    ProbeBytes(0xF3, 0x0F, 0x11, 0x05);                   // movss [rip+raw],xmm0
+    ProbeBytes(BitConverter.GetBytes(checked((int)((long)(cave + RawMagnitudeOffset) - (long)(cave + (ulong)probe + 4)))));
+    ProbeBytes(originalProbe);
+    int probeReturnJumpOffset = probe;
+    ProbeBytes(0xE9);
+    ProbeBytes(BitConverter.GetBytes(CheckedRelative(cave + (ulong)probeReturnJumpOffset, 5, probeSite + (ulong)originalProbe.Length)));
 
     int ads = AdsCodeOffset;
     void AdsBytes(params byte[] bytes) { bytes.CopyTo(trampoline, ads); ads += bytes.Length; }
@@ -235,7 +242,8 @@ try
 
     float[] unifiedTargets =
     [
-        .. Enumerable.Range(1, WalkLevelCount).Select(level => level * 0.05f),
+        .. Enumerable.Range(0, 9).Select(level => 0.05f + level * (0.30f / 8.0f)),
+        .. Enumerable.Range(1, 7).Select(level => 0.35f + level * (0.25f / 7.0f)),
         .. Enumerable.Range(0, JogLevelCount).Select(level => JogMinimumScale + level * JogStepScale)
     ];
     int currentLevelIndex = JogMaximumLevelIndex;
@@ -245,8 +253,31 @@ try
     bool shiftBypass = false, lastModeJog = true, modeKnown = false, walkJogKeyDown = false;
     bool adsHeld = false, modeBeforeAdsJog = true;
     bool adsOverrideEnabled = false;
+    bool crouched = false, stanceKnown = false;
     int weaponCaptureSequence = 0;
     string weaponCaptureDirectory = Path.Combine(AppContext.BaseDirectory, "weapon-probe-captures");
+    (ulong Owner, ulong StateObject, byte Primary, byte Mirror) ReadStanceCandidates()
+    {
+        ulong owner = BitConverter.ToUInt64(ReadExact(process, cave + ProbeOwnerOffset, 8));
+        if (owner < 0x10000) throw new InvalidOperationException("Movement owner is not available; move briefly before sampling.");
+        ulong stateObject = BitConverter.ToUInt64(ReadExact(process, owner + 0x38, 8));
+        if (stateObject < 0x10000) throw new InvalidOperationException("Stance-state object is not available.");
+        byte primary = ReadExact(process, stateObject + 0xB0, 1)[0];
+        byte mirror = ReadExact(process, stateObject + 0x330, 1)[0];
+        return (owner, stateObject, primary, mirror);
+    }
+    bool TryReadCrouched(out bool value)
+    {
+        value = false;
+        try
+        {
+            var sample = ReadStanceCandidates();
+            if (sample.Primary != sample.Mirror || sample.Primary > 1) return false;
+            value = sample.Primary == 1;
+            return true;
+        }
+        catch { return false; }
+    }
     bool IsGameForeground()
     {
         nint foreground = GetForegroundWindow();
@@ -270,17 +301,54 @@ try
         float position = Math.Clamp((scale - WalkMinimumScale) / (WalkMaximumScale - WalkMinimumScale), 0.0f, 1.0f);
         return WalkAdsMinimum + position * (WalkAdsMaximum - WalkAdsMinimum);
     }
+    float CrouchWalkAdsForScale(float scale)
+    {
+        float position = Math.Clamp((scale - WalkMinimumScale) / (WalkMaximumScale - WalkMinimumScale), 0.0f, 1.0f);
+        return CrouchWalkAdsMinimum + position * (CrouchWalkAdsMaximum - CrouchWalkAdsMinimum);
+    }
+    float StandingAdsForTarget(float target)
+    {
+        if (target <= 0.60f)
+        {
+            const float slope = (StandingWalkAdsAtMaximum - StandingWalkAdsAtVanillaWalk) / (0.60f - 0.35f);
+            return StandingWalkAdsAtVanillaWalk + (target - 0.35f) * slope;
+        }
+        const float jogSlope = (StandingJogAdsAtMidpoint - StandingJogAdsAtMinimum) / (0.85f - 0.70f);
+        float matched = StandingJogAdsAtMinimum + (target - 0.70f) * jogSlope;
+        return Math.Min(matched, StandingAdsCap);
+    }
     void ApplySelectedScale(float value)
     {
         selectedScale = value;
         WriteScale(process, cave + SelectedScaleOffset, selectedScale);
+        float standingAds = StandingAdsForTarget(unifiedTargets[currentLevelIndex]);
         float walkScale = currentLevelIndex < WalkLevelCount ? unifiedTargets[currentLevelIndex] / 0.35f : WalkMaximumScale;
-        WriteScale(process, cave + WalkAdsSelectedOffset, WalkAdsForScale(walkScale));
-        WriteScale(process, cave + JogAdsSelectedOffset, selectedJogAds);
+        float walkAds = crouched ? CrouchWalkAdsForScale(walkScale) : standingAds;
+        float jogAds = adsCalibrationMode ? selectedJogAds : crouched ? CrouchJogAds : standingAds;
+        WriteScale(process, cave + WalkAdsSelectedOffset, walkAds);
+        WriteScale(process, cave + JogAdsSelectedOffset, jogAds);
     }
     bool LevelIsJog(int levelIndex) => levelIndex >= JogMinimumLevelIndex;
     float NativeGaitMagnitude() => lastModeJog ? 1.0f : 0.35f;
     void ApplyCurrentLevel() => ApplySelectedScale(unifiedTargets[currentLevelIndex] / NativeGaitMagnitude());
+    void PrintLiveLevel(string reason)
+    {
+        if (!verbose) return;
+        Console.WriteLine($"LIVE {reason,-12} | level {currentLevelIndex + 1,2}/{unifiedTargets.Length} | {(LevelIsJog(currentLevelIndex) ? "jog " : "walk")} | HIP target {unifiedTargets[currentLevelIndex]:0.0000} | native {(lastModeJog ? "jog " : "walk")} | multiplier {selectedScale:0.0000} | stance {(crouched ? "crouched" : "standing")}");
+    }
+    void RefreshCrouchState()
+    {
+        if (!TryReadCrouched(out bool detected)) return;
+        if (stanceKnown && crouched == detected) return;
+        bool changed = stanceKnown;
+        stanceKnown = true;
+        crouched = detected;
+        if (modeKnown) ApplyCurrentLevel();
+        Console.WriteLine(changed
+            ? $"Stance changed: {(crouched ? "crouched" : "standing")}; movement coefficients refreshed."
+            : $"Stance detected: {(crouched ? "crouched" : "standing")}.");
+        if (modeKnown) PrintLiveLevel("stance");
+    }
     void SetAdsOverrideEnabled(bool enabled)
     {
         WriteExact(process, cave + AdsModeJogOffset, BitConverter.GetBytes(LevelIsJog(currentLevelIndex) ? 1 : 0));
@@ -297,8 +365,14 @@ try
         modeKnown = true;
         currentLevelIndex = lastModeJog ? JogMaximumLevelIndex : VanillaWalkLevelIndex;
         if (adsHeld || IsAdsHeld()) modeBeforeAdsJog = LevelIsJog(currentLevelIndex);
+        if (TryReadCrouched(out bool detectedCrouch))
+        {
+            crouched = detectedCrouch;
+            stanceKnown = true;
+        }
         ApplyCurrentLevel();
         Console.WriteLine($"Native gait detected as {(lastModeJog ? "jog" : "walk")}; unified level {currentLevelIndex + 1}/{unifiedTargets.Length} initialized.");
+        PrintLiveLevel("initialized");
         return true;
     }
     string CaptureWeaponObjectGraph(string weapon, ulong rootAddress)
@@ -391,6 +465,7 @@ try
                                 bool targetJog = !LevelIsJog(currentLevelIndex);
                                 currentLevelIndex = targetJog ? JogMaximumLevelIndex : VanillaWalkLevelIndex;
                                 ApplyCurrentLevel();
+                                PrintLiveLevel("X anchor");
                                 if (adsHeld || IsAdsHeld()) SetAdsOverrideEnabled(true);
                                 Console.WriteLine($"X: selected vanilla {(targetJog ? "jog" : "walk")} speed.");
                             }
@@ -418,6 +493,7 @@ try
                     lastModeJog = true;
                     modeKnown = true;
                     ApplyCurrentLevel();
+                    PrintLiveLevel("sprint reset");
                     Console.WriteLine("Sprint released: returned to vanilla full jog.");
                 }
             }
@@ -435,7 +511,7 @@ try
         ? "CALIBRATION MODE: remain in native jog; wheel step is 0.01. F6 captures maximum-walk target; F7 captures minimum-jog target."
         : adsCalibrationMode
             ? $"ADS CALIBRATION: global jog-ADS starts at {JogAdsMaximum:0.00}; F6 lowers 0.10, F7 raises 0.10, F8 records the preferred value."
-            : "Unified ladder: 12 walk positions from 0.05-0.60 and 9 jog positions from 0.70-1.00; the wheel crosses both ranges automatically.");
+            : $"Unified ladder: {WalkLevelCount} walk positions from 0.05-0.60 and {JogLevelCount} jog positions from 0.70-1.00; the wheel crosses both ranges automatically.");
     Console.WriteLine("X jumps from the current range to the opposite vanilla gait; no separate custom profiles are saved.");
     Console.WriteLine("Shift bypasses scaling for sprint; release returns to vanilla full jog.");
     Console.WriteLine("F4 resets the current range to its vanilla anchor; F5 restores original code and exits.");
@@ -453,21 +529,24 @@ try
                 continue;
             }
             if (!EnsureModeKnown()) continue;
+            RefreshCrouchState();
             if (IsAdsHeld()) SetAdsOverrideEnabled(true);
             int nextLevel = Math.Clamp(currentLevelIndex + (increase ? 1 : -1), 0, unifiedTargets.Length - 1);
             if (nextLevel == currentLevelIndex) continue;
             currentLevelIndex = nextLevel;
             ApplyCurrentLevel();
-            if (verbose) Console.WriteLine($"Unified level {currentLevelIndex + 1}/{unifiedTargets.Length}: {(LevelIsJog(currentLevelIndex) ? "jog" : "walk")} target {unifiedTargets[currentLevelIndex]:0.0000}, native multiplier {selectedScale:0.0000}.");
+            PrintLiveLevel(increase ? "wheel up" : "wheel down");
             continue;
         }
         if (message.Message == WmTimer && !shiftBypass)
         {
             if (game.HasExited) break;
+            if (modeKnown) RefreshCrouchState();
             bool adsNow = IsGameForeground() && IsAdsHeld() && IsMoving();
             if (adsNow)
             {
                 if (!EnsureModeKnown()) continue;
+                RefreshCrouchState();
                 SetAdsOverrideEnabled(true);
                 if (!adsHeld)
                 {
@@ -487,6 +566,7 @@ try
                 continue;
             }
             if (!modeKnown && IsMoving()) EnsureModeKnown();
+            if (modeKnown) RefreshCrouchState();
             continue;
         }
         if (message.Message != WmHotkey) continue;
@@ -546,6 +626,7 @@ try
             if (!EnsureModeKnown()) continue;
             currentLevelIndex = LevelIsJog(currentLevelIndex) ? JogMaximumLevelIndex : VanillaWalkLevelIndex;
             ApplyCurrentLevel();
+            PrintLiveLevel("F4 anchor");
             Console.WriteLine($"F4: reset to vanilla {(LevelIsJog(currentLevelIndex) ? "jog" : "walk")} speed.");
         }
         else if (message.WParam == 2) break;
