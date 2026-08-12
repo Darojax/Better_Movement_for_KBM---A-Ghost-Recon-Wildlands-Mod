@@ -1,0 +1,43 @@
+# .NET build output
+**/bin/
+**/obj/
+*.dll
+*.exe
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+
+# Release packages and third-party tools
+/artifacts/
+/tools/
+/installer/
+/.diagnostics/
+/tmp/
+/tmp-icon-candidates/
+*.zip
+*.7z
+
+# Runtime captures, scanner output, and screenshots
+*.log
+*.err
+*.png
+!assets/images/nomad_1.png
+!assets/images/nomad_2.png
+!assets/images/better_movement_for_kbm_logo_small_and_trimmed.png
+**/scanner-results/
+**/weapon-probe-captures/
+**/captures/
+
+# IDE and user-local files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Temporary files
+*.tmp
+*.bak
+*~
