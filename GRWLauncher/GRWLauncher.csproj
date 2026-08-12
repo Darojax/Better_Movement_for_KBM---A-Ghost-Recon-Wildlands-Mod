@@ -17,7 +17,7 @@
     <Resource Include="..\assets\images\nomad_2.png" Link="Assets\nomad_2.png" />
     <Resource Include="..\assets\images\better_movement_for_kbm_logo_small_and_trimmed.png" Link="Assets\better_movement_for_kbm_logo_small_and_trimmed.png" />
     <Resource Include="..\assets\icons\grw.ico" Link="Assets\grw.ico" />
-    <ProjectReference Include="..\GRWMovementRuntime\GRWMovementRuntime.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\GRWMovementRuntime\GRWMovementRuntime.csproj" ReferenceOutputAssembly="false" Condition="'$(SkipRuntimeProjectReference)' != 'true'" />
   </ItemGroup>
   <Target Name="CopyMovementRuntime" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' == ''">
     <ItemGroup>

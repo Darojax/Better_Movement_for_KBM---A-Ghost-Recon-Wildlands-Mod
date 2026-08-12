@@ -11,34 +11,28 @@ $packageName = "Better-Movement-for-KBM-GRW"
 $portableRoot = Join-Path $artifactRoot "portable\$packageName"
 $sourceRoot = Join-Path $artifactRoot "source\$packageName-Source"
 $launcherOutput = Join-Path $artifactRoot "publish-launcher"
-$runtimeOutput = Join-Path $launcherOutput "Runtime"
+$runtimeOutput = Join-Path $artifactRoot "publish-runtime"
 
-foreach ($path in @($portableRoot, $sourceRoot, $launcherOutput)) {
+foreach ($path in @($portableRoot, $sourceRoot, $launcherOutput, $runtimeOutput)) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
     New-Item -ItemType Directory -Path $path | Out-Null
 }
 
-$versionProperties = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:ContinuousIntegrationBuild=true", "-p:DebugType=None", "-p:DebugSymbols=false", "-p:SelfContained=false", "-p:PublishSingleFile=false")
-dotnet publish (Join-Path $workspace "GRWLauncher\GRWLauncher.csproj") -c Release @versionProperties -o $launcherOutput
-if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed." }
-
-# The project reference establishes build order but can copy runtime app-host
-# files beside the launcher. The public package keeps the complete helper in
-# Runtime instead, so remove those redundant root copies.
-Get-ChildItem -LiteralPath $launcherOutput -File -Filter "GRWAnalogueMovement*" | Remove-Item -Force
-
-New-Item -ItemType Directory -Path $runtimeOutput -Force | Out-Null
+$versionProperties = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:ContinuousIntegrationBuild=true", "-p:DebugType=None", "-p:DebugSymbols=false", "-p:RuntimeIdentifier=win-x64", "-p:SelfContained=false", "-p:PublishSingleFile=true")
 dotnet publish (Join-Path $workspace "GRWMovementRuntime\GRWMovementRuntime.csproj") -c Release @versionProperties -o $runtimeOutput
 if ($LASTEXITCODE -ne 0) { throw "Runtime publish failed." }
+
+# The runtime is published explicitly above. Avoid republishing the executable
+# project reference while producing the framework-dependent single-file launcher.
+dotnet publish (Join-Path $workspace "GRWLauncher\GRWLauncher.csproj") -c Release @versionProperties -p:BuildProjectReferences=false -p:SkipRuntimeProjectReference=true -o $launcherOutput
+if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed." }
 
 if ($CertificateThumbprint) {
     $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signTool) { throw "SignTool was not found. Install the Windows SDK or omit -CertificateThumbprint." }
     foreach ($binary in @(
         (Join-Path $launcherOutput "Better Movement for KBM - GRW.exe"),
-        (Join-Path $launcherOutput "Better Movement for KBM - GRW.dll"),
-        (Join-Path $runtimeOutput "GRWAnalogueMovement.exe"),
-        (Join-Path $runtimeOutput "GRWAnalogueMovement.dll")
+        (Join-Path $runtimeOutput "GRWAnalogueMovement.exe")
     )) {
         & $signTool.Source sign /sha1 $CertificateThumbprint /fd SHA256 /tr $TimestampUrl /td SHA256 $binary
         if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $binary" }
@@ -47,10 +41,10 @@ if ($CertificateThumbprint) {
     }
 }
 
-Copy-Item -Path (Join-Path $launcherOutput "*") -Destination $portableRoot -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $launcherOutput "Better Movement for KBM - GRW.exe") -Destination $portableRoot
+New-Item -ItemType Directory -Path (Join-Path $portableRoot "Runtime") -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $runtimeOutput "GRWAnalogueMovement.exe") -Destination (Join-Path $portableRoot "Runtime")
 Copy-Item -LiteralPath (Join-Path $workspace "release\README.md") -Destination $portableRoot
-Copy-Item -LiteralPath (Join-Path $workspace "release\DISCLAIMER.txt") -Destination $portableRoot
-Copy-Item -LiteralPath (Join-Path $workspace "release\LICENSE.txt") -Destination $portableRoot
 
 $zip = Join-Path $artifactRoot "$packageName-$Version-Portable.zip"
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }

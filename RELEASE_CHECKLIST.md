@@ -21,6 +21,7 @@ Use this checklist for every public build. A successful local play session is ne
 - [ ] Build from the final tagged commit with `build-release.ps1`.
 - [ ] If available, Authenticode-sign and RFC 3161 timestamp the launcher and runtime PE files before hashes and archives are generated.
 - [x] Confirm no `.pdb`, developer path, save data, logs, captures, credentials, or certificate material exists in either archive.
+- [x] Confirm the portable archive contains only the launcher EXE, runtime helper EXE, and README.
 - [x] Extract the source archive elsewhere and confirm it builds independently.
 - [x] Verify the published archive hashes in `RELEASE-SHA256SUMS.txt`.
 - [x] Scan the exact candidate archives and executables with Microsoft Defender.

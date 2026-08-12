@@ -45,4 +45,30 @@ Before deleting the portable folder, use **Remove launcher data…** to remove b
 
 This unofficial mod temporarily modifies the running `GRW.exe` process. Ubisoft or its anti-cheat systems may treat this as prohibited activity. No firewall rule, offline procedure, launcher check, or anti-cheat replacement can guarantee account safety.
 
-Never use the mod in co-op, Ghost War, or any online session. Read `DISCLAIMER.txt` before use. If you encounter a problem, report it on the official Nexus Mods page or GitHub repository.
+Never use the mod in co-op, Ghost War, or any online session. Read the risk notice and disclaimer below before use. If you encounter a problem, report it on the official Nexus Mods page or GitHub repository.
+
+## Risk notice and disclaimer
+
+This is an unofficial community modification and is not affiliated with, endorsed by, or supported by Ubisoft, Easy Anti-Cheat/Epic Games, or Nexus Mods.
+
+The software modifies the memory of the running Ghost Recon Wildlands process. It is intended exclusively for offline single-player use. Using process-memory modification tools may violate Ubisoft's terms or trigger anti-cheat, integrity, telemetry, or security systems. No configuration—including SayNoToEAC, firewall isolation, or disconnecting from the internet—can guarantee that an account will not be detected, restricted, suspended, or terminated.
+
+**DO NOT USE THIS SOFTWARE IN CO-OP, GHOST WAR, OR ANY ONLINE SESSION.**
+
+The software is provided "as is", without warranty of any kind. To the maximum extent permitted by law, the authors and contributors are not responsible for bans, account restrictions, loss of access, corrupted or lost saves, crashes, instability, data loss, security-software alerts, network disruption, or any other direct or indirect damage arising from installation or use.
+
+Back up saves before use. Verify firewall isolation. Confirm Easy Anti-Cheat is not active. Disable the mod through the launcher and exit Wildlands before reconnecting or entering any online mode.
+
+By installing or using this software, you acknowledge these risks and accept sole responsibility for the consequences.
+
+## License
+
+MIT License
+
+Copyright (c) 2026 Better Movement for KBM contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

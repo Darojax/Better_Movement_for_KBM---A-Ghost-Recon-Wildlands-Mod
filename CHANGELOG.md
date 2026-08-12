@@ -20,3 +20,4 @@ All notable public changes to Better Movement for KBM are documented here.
 - Validated that unsupported live instruction signatures refuse attachment without writing, and clarified the resulting error message.
 - Reduced the portable package from roughly 220 MB extracted to about 2 MB by using the Microsoft .NET 8 Desktop Runtime already installed on the user's system.
 - Replaced the bundled technical README with a concise setup and usage guide and removed the redundant internal file-hash manifest.
+- Consolidated the portable package into a single-file launcher, a single-file runtime helper, and one README containing the disclaimer and license.
