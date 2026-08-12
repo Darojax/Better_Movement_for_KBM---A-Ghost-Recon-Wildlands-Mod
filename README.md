@@ -6,7 +6,7 @@
 
 A Windows mod that gives keyboard-and-mouse players granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*.
 
-The mouse wheel traverses one continuous range from a very slow walk to full jogging speed, while retaining the familiar `X` walk/jog shortcut. This replaces Wildlands' default mouse-wheel weapon cycling; use the keyboard's `1`, `2`, and `3` keys to select weapon slots instead.
+The mouse wheel traverses one continuous range from a very slow walk to full jogging speed, while retaining the familiar `X` walk/jog shortcut. Before using the mod, open **Settings → Key Mapping → Player Combat** and reassign **Next Weapon** and **Previous Weapon** to controls other than the mouse wheel. The keyboard's `1`, `2`, and `3` keys remain available for direct weapon selection.
 
 ### Current behavior
 

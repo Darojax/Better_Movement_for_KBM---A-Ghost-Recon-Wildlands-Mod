@@ -2,7 +2,7 @@
 
 Better Movement for KBM adds smooth, granular movement-speed control to the Windows version of **Ghost Recon Wildlands**. Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Aim-Down-Sight and crouched movement are also adjusted to feel more consistent.
 
-The mod replaces the game's mouse-wheel weapon switching. Reassign Mouse Wheel Up and Mouse Wheel Down in the in-game controls, or use keys `1`, `2`, and `3` to select weapon slots.
+The mod uses the mouse wheel for movement-speed control, so first open **Settings → Key Mapping → Player Combat** and reassign **Next Weapon** and **Previous Weapon** to controls other than the mouse wheel. Keys `1`, `2`, and `3` remain available for direct weapon selection.
 
 ## Requirements
 
