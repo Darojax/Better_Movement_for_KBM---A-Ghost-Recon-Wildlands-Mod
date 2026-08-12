@@ -18,17 +18,28 @@ foreach ($path in @($portableRoot, $sourceRoot, $launcherOutput)) {
     New-Item -ItemType Directory -Path $path | Out-Null
 }
 
-$versionProperties = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:ContinuousIntegrationBuild=true", "-p:DebugType=None", "-p:DebugSymbols=false")
-dotnet publish (Join-Path $workspace "GRWLauncher\GRWLauncher.csproj") -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true @versionProperties -o $launcherOutput
+$versionProperties = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:ContinuousIntegrationBuild=true", "-p:DebugType=None", "-p:DebugSymbols=false", "-p:SelfContained=false", "-p:PublishSingleFile=false")
+dotnet publish (Join-Path $workspace "GRWLauncher\GRWLauncher.csproj") -c Release @versionProperties -o $launcherOutput
 if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed." }
+
+# The project reference establishes build order but can copy runtime app-host
+# files beside the launcher. The public package keeps the complete helper in
+# Runtime instead, so remove those redundant root copies.
+Get-ChildItem -LiteralPath $launcherOutput -File -Filter "GRWAnalogueMovement*" | Remove-Item -Force
+
 New-Item -ItemType Directory -Path $runtimeOutput -Force | Out-Null
-dotnet publish (Join-Path $workspace "GRWMovementRuntime\GRWMovementRuntime.csproj") -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true @versionProperties -o $runtimeOutput
+dotnet publish (Join-Path $workspace "GRWMovementRuntime\GRWMovementRuntime.csproj") -c Release @versionProperties -o $runtimeOutput
 if ($LASTEXITCODE -ne 0) { throw "Runtime publish failed." }
 
 if ($CertificateThumbprint) {
     $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signTool) { throw "SignTool was not found. Install the Windows SDK or omit -CertificateThumbprint." }
-    foreach ($binary in @(Join-Path $launcherOutput "Better Movement for KBM - GRW.exe", Join-Path $runtimeOutput "GRWAnalogueMovement.exe")) {
+    foreach ($binary in @(
+        (Join-Path $launcherOutput "Better Movement for KBM - GRW.exe"),
+        (Join-Path $launcherOutput "Better Movement for KBM - GRW.dll"),
+        (Join-Path $runtimeOutput "GRWAnalogueMovement.exe"),
+        (Join-Path $runtimeOutput "GRWAnalogueMovement.dll")
+    )) {
         & $signTool.Source sign /sha1 $CertificateThumbprint /fd SHA256 /tr $TimestampUrl /td SHA256 $binary
         if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $binary" }
         & $signTool.Source verify /pa /v $binary
@@ -36,22 +47,10 @@ if ($CertificateThumbprint) {
     }
 }
 
-# The launcher project references the runtime only to establish build order. A
-# single-file launcher publish may nevertheless leave this unused sidecar file.
-$orphanedRuntimeConfig = Join-Path $launcherOutput "GRWAnalogueMovement.runtimeconfig.json"
-if (Test-Path -LiteralPath $orphanedRuntimeConfig) { Remove-Item -LiteralPath $orphanedRuntimeConfig -Force }
-
 Copy-Item -Path (Join-Path $launcherOutput "*") -Destination $portableRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $workspace "release\README.md") -Destination $portableRoot
 Copy-Item -LiteralPath (Join-Path $workspace "release\DISCLAIMER.txt") -Destination $portableRoot
 Copy-Item -LiteralPath (Join-Path $workspace "release\LICENSE.txt") -Destination $portableRoot
-
-$hashFile = Join-Path $portableRoot "SHA256SUMS.txt"
-Get-ChildItem -LiteralPath $portableRoot -File -Recurse | Where-Object Name -ne "SHA256SUMS.txt" | Sort-Object FullName | ForEach-Object {
-    $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    $relativeFile = $_.FullName.Substring($portableRoot.Length).TrimStart([IO.Path]::DirectorySeparatorChar).Replace('\', '/')
-    "$hash  $relativeFile"
-} | Set-Content -LiteralPath $hashFile -Encoding ascii
 
 $zip = Join-Path $artifactRoot "$packageName-$Version-Portable.zip"
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }

@@ -1,105 +1,48 @@
-# Better Movement for KBM — A Ghost Recon Wildlands Mod
+# Better Movement for KBM
 
-> **Release candidate.** Use only a package published through the official GitHub release or Nexus page and verify its published SHA-256 hashes.
+Better Movement for KBM adds smooth, granular movement-speed control to the Windows version of **Ghost Recon Wildlands**. Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Aim-Down-Sight and crouched movement are also adjusted to feel more consistent.
 
-Granular mouse-wheel movement control for the Windows version of **Tom Clancy's Ghost Recon Wildlands**.
-
-## Important warning
-
-This unofficial mod writes to the running `GRW.exe` process. It is intended exclusively for offline single-player use. Ubisoft may regard process-memory modification or related tools as prohibited. No anti-cheat modification, firewall rule, offline procedure, or disclaimer can guarantee that an account will not be restricted or sanctioned.
-
-Read [DISCLAIMER.txt](DISCLAIMER.txt) before use.
-
-## Movement behavior
-
-- Walk HIP: 16 near-uniform levels from `0.05` to `0.60`, including the exact vanilla-walk anchor at `0.35`.
-- Jog HIP: 11 evenly spaced levels from `0.70` to `1.00` in `0.03` steps.
-- Mouse wheel traverses one unified ladder from the slowest walk through the fastest jog, regardless of the game's hidden native gait.
-- This replaces the vanilla mouse-wheel action that cycles among the three weapon slots. Use `1`, `2`, and `3` for direct weapon-slot selection.
-- Standing walk ADS follows a calibrated curve from coefficient `1.81` at vanilla walk to `2.48` at maximum walk, extrapolated through the lower walk levels.
-- Standing jog ADS follows the underlying HIP level and is capped at coefficient `3.40` to keep the fastest ADS movement believable and stable.
-- Crouching is detected from the game's native stance state. Crouch walk ADS uses a proportional `0.84–1.68` curve; crouch jog ADS uses coefficient `2.70`.
-- Scrolling while ADS still adjusts the unified HIP level restored on ADS release.
-- From a walking-range speed, `X` jumps to vanilla full jog. From a jogging-range speed, `X` jumps to vanilla walk. No separate custom gait speeds are saved.
-- Releasing Sprint/Shift returns movement to vanilla full jog.
-- The launcher's adaptive green button disables the runtime and restores the original game instructions.
-
-Small terrain-dependent speed changes on slopes are native Wildlands behavior. Wildlands also applies weapon-dependent movement differences after the mod's shared ADS coefficient; the current tuning has been validated with an LMG, assault rifle, and pistol rather than normalized per weapon class.
+The mod replaces the game's mouse-wheel weapon switching. Reassign Mouse Wheel Up and Mouse Wheel Down in the in-game controls, or use keys `1`, `2`, and `3` to select weapon slots.
 
 ## Requirements
 
 - Windows 10 or 11 x64.
-- Steam or Ubisoft Connect edition of Ghost Recon Wildlands.
-- Offline single-player use.
-- SayNoToEAC installed separately from its original source.
-- Outbound isolation for Wildlands is strongly recommended but remains optional.
+- Steam or Ubisoft Connect version of Ghost Recon Wildlands.
+- [Microsoft .NET 8 Desktop Runtime x64](https://dotnet.microsoft.com/download/dotnet/8.0).
+- SayNoToEAC, installed separately using its original author's instructions.
+- Offline single-player only.
 
-SayNoToEAC is not included and this project does not install or modify it.
+SayNoToEAC is not included with this mod. The launcher provides installation guidance and links to its original sources.
 
-## Recommended installation
+## Setup and use
 
-1. Back up your saves.
-2. Install SayNoToEAC using its original author's instructions.
-3. Run `Better Movement for KBM - GRW.exe`.
-4. Review the live checklist. Red items block only mod attachment; cautions such as firewall isolation and save backup remain optional.
-5. Optionally install the separate Wildlands and Ubisoft Connect firewall blocks from the launcher.
-6. Click **Launch with Better Movement for KBM** and complete the one-time risk acknowledgement.
-7. Load an offline single-player save. The launcher waits for `GRW.exe` and enables the runtime automatically.
+1. Extract the complete ZIP to a folder of your choice.
+2. Run `Better Movement for KBM - GRW.exe`.
+3. Select your game installation if more than one is detected.
+4. Follow the launcher's checklist and create a save backup.
+5. Optional but recommended: install the offered Windows Firewall blocks.
+6. Click the green **Launch with Better Movement for KBM** button.
 
-Do not use the mod in co-op, Ghost War, or any online session.
+Keep the launcher open while playing. Its green button adapts automatically and can launch the game, enable or disable the mod in a running game, or cancel a pending launch.
 
-## Strict isolation
+## Controls
 
-The launcher can additionally block detected Ubisoft Connect executables. This may prevent login, updates, cloud synchronization, and other Ubisoft games from functioning. It is optional and should only be enabled when cached offline launch works on the user's system.
+- Mouse wheel while moving: adjust movement speed.
+- `X`: immediately switch to the opposite vanilla walk/jog speed.
+- Sprint/Shift: sprint normally; releasing it returns to full jogging speed.
 
-The standard mode blocks these Wildlands executables when present:
+## If the game cannot start
 
-- `GRW.exe`
-- `GRW_Upp.exe`
-- `rungame.exe`
+Some systems require one normal online launch before firewall isolation works. Uninstall both firewall blocks in the launcher, start the game normally while online, reach the main menu, then exit and reinstall the blocks.
 
-## Safe shutdown
+## Safe shutdown and removal
 
-1. Pause the game.
-2. Use the adaptive green button to disable Better Movement for KBM, or close the launcher and approve restoration.
-3. Wait until the launcher reports that Better Movement is disabled.
-4. Exit Wildlands, then reconnect or remove firewall isolation.
+Use the green launcher button to disable the mod before reconnecting or entering any online mode. If the runtime or launcher is forcibly terminated, exit Ghost Recon Wildlands before doing anything online.
 
-If the runtime is forcibly terminated, exit Wildlands before doing anything online. All memory changes disappear when the game process exits.
+Before deleting the portable folder, use **Remove launcher data…** to remove backups, settings, and firewall rules created by the launcher. Normal game saves and SayNoToEAC files are not removed.
 
-## Game updates
+## Important warning
 
-The runtime verifies the exact original bytes at every supported instruction site. It refuses to attach when they differ. Do not bypass this protection. A new Wildlands executable must be analyzed and explicitly supported before the mod is updated.
+This unofficial mod temporarily modifies the running `GRW.exe` process. Ubisoft or its anti-cheat systems may treat this as prohibited activity. No firewall rule, offline procedure, launcher check, or anti-cheat replacement can guarantee account safety.
 
-## Save backups
-
-The launcher checks and backs up the save containers belonging to the currently selected edition:
-
-- Steam: `3559`
-- Ubisoft Connect: `1771` and legacy container `4740`, when present
-
-The Save backup **Manage** panel detects the default location and allows additional custom or redirected save roots to be registered. Overlapping roots are rejected, including resolvable directory links, so the same container is not backed up twice.
-
-Backups are kept in separate edition and source-identity directories:
-
-`Documents\Better Movement for KBM\Save Backups\<Steam or Ubisoft Connect>\<source name and ID>\<timestamp>`
-
-Steam and Ubisoft Connect installations can use different Ubisoft save containers on the same account. In local testing, the Ubisoft Connect installation used `1771` while the Steam installation used `3559`; progress was therefore not shared automatically between those installations.
-
-The launcher's **Save backup** status follows the selected installation and every registered source independently. It returns to **Caution** if any source has no backup or contains files newer than its latest backup. Removing a custom source from the launcher never deletes its saves or existing backups, and the launcher never restores or copies saves between sources automatically.
-
-## Antivirus notices
-
-Process-memory modification and firewall management can trigger security-product warnings. The project should be downloaded only from its official Nexus/GitHub release, checked against published SHA-256 hashes, and built from source when possible.
-
-## Portable removal
-
-Use **Remove launcher data…** before deleting the portable folder. After one confirmation, it removes backups created by Better Movement for KBM, its local settings and records, and its managed Ghost Recon Wildlands and Ubisoft Connect firewall rules. It leaves normal game saves, SayNoToEAC files, renamed EAC files, and firewall rules created by other tools untouched. The action is unavailable while the movement runtime is running.
-
-SayNoToEAC must be removed separately using its original instructions if the user no longer wants it.
-
-## Support boundaries
-
-Supported: the tested Windows executable and offline single-player. Steam and Ubisoft Connect storefront launch paths are detected independently.
-
-Unsupported: multiplayer/co-op, unknown executable builds, Steam Input/controller emulation combinations, other operating systems, or operation with Easy Anti-Cheat active.
+Never use the mod in co-op, Ghost War, or any online session. Read `DISCLAIMER.txt` before use. If you encounter a problem, report it on the official Nexus Mods page or GitHub repository.

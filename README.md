@@ -57,3 +57,5 @@ To assemble local development packages:
 ```
 
 The build script writes generated packages beneath `artifacts/`, which is not tracked by Git.
+
+The small portable package is framework-dependent and requires the Microsoft .NET 8 Desktop Runtime x64. End users do not need the .NET SDK.

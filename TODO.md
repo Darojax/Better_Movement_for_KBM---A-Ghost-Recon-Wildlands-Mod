@@ -100,7 +100,7 @@ Do not add input-based weapon tracking. Testing showed it can desynchronize thro
 ## Priority 3 — Release preparation
 
 - Choose a release version only after extended regression passes.
-- Perform clean-machine tests for the portable package.
+- Collect post-release community reports for clean Windows 10/11 systems and unusual configurations; these are not first-release blockers.
 - Test standard and strict firewall modes and verify **Remove launcher data…** removes only rules managed by Better Movement for KBM.
 - Verify the exact-instruction refusal path against an unsupported or deliberately mismatched build.
 - Rebuild portable and source packages from the final commit.

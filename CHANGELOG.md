@@ -18,3 +18,5 @@ All notable public changes to Better Movement for KBM are documented here.
 - Reduced excess vertical space in the SayNoToEAC management panel.
 - Removed the legacy F5 runtime-shutdown hotkey; the launcher's adaptive primary action is now the sole in-session disable control.
 - Validated that unsupported live instruction signatures refuse attachment without writing, and clarified the resulting error message.
+- Reduced the portable package from roughly 220 MB extracted to about 2 MB by using the Microsoft .NET 8 Desktop Runtime already installed on the user's system.
+- Replaced the bundled technical README with a concise setup and usage guide and removed the redundant internal file-hash manifest.
