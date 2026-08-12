@@ -35,6 +35,8 @@ bool calibrationMode = args.Contains("--calibrate", StringComparer.OrdinalIgnore
 bool adsCalibrationMode = args.Contains("--ads-calibrate", StringComparer.OrdinalIgnoreCase);
 bool weaponAdsProbeMode = args.Contains("--weapon-ads-probe", StringComparer.OrdinalIgnoreCase);
 bool verbose = args.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
+string? shutdownEventName = args.FirstOrDefault(argument => argument.StartsWith("--shutdown-event=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1].Trim('"');
+using EventWaitHandle? shutdownEvent = shutdownEventName is null ? null : EventWaitHandle.OpenExisting(shutdownEventName);
 if (new[] { calibrationMode, adsCalibrationMode, weaponAdsProbeMode }.Count(enabled => enabled) > 1)
     throw new InvalidOperationException("Select only one calibration or probe mode at a time.");
 ulong imageBase = unchecked((ulong)(game.MainModule?.BaseAddress.ToInt64() ?? 0));
@@ -93,7 +95,7 @@ string gameDirectory = Path.GetDirectoryName(gameExecutable) ?? throw new Invali
 string[] eacProcesses = Process.GetProcesses().Where(p => p.ProcessName.Contains("easyanticheat", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Equals("eac", StringComparison.OrdinalIgnoreCase)).Select(p => p.ProcessName).Distinct().ToArray();
 if (eacProcesses.Length != 0) throw new InvalidOperationException($"Easy Anti-Cheat appears active ({string.Join(", ", eacProcesses)}). Refusing to attach.");
 if (!SayNoToEacAppearsInstalled(gameDirectory)) throw new InvalidOperationException("SayNoToEAC stub/backup layout was not detected. Refusing to attach.");
-if (!FirewallBlocksProgram(gameExecutable)) throw new InvalidOperationException("No enabled outbound block rule was found for GRW.exe. Run GRWMovementSafety first.");
+if (!FirewallBlocksProgram(gameExecutable)) Console.WriteLine("CAUTION: no enabled outbound block rule was found for GRW.exe. Offline isolation is strongly recommended.");
 string acceptanceDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GRW Analogue Movement Mod");
 string acceptanceFile = Path.Combine(acceptanceDirectory, "offline-risk-accepted-v1");
 if (!File.Exists(acceptanceFile))
@@ -537,6 +539,11 @@ try
             ApplyCurrentLevel();
             PrintLiveLevel(increase ? "wheel up" : "wheel down");
             continue;
+        }
+        if (message.Message == WmTimer && shutdownEvent?.WaitOne(0) == true)
+        {
+            Console.WriteLine("Launcher requested a clean runtime shutdown.");
+            break;
         }
         if (message.Message == WmTimer && !shiftBypass)
         {

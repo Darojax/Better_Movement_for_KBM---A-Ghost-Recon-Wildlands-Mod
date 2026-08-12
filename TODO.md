@@ -6,6 +6,18 @@
 
 The core movement model is implemented and passed its initial in-game validation on 2026-08-11. The next phase is extended play-testing, runtime polish, and release validation rather than further redesign.
 
+## Known issue â€” Save backup panel is not ready
+
+The launcher's Save backup management panel is not working properly yet and must not be considered release-ready or relied upon as the only save-protection method.
+
+- Reproduce and diagnose the current panel failure before making further design changes.
+- Verify automatic detection and edition switching for Steam (`3559`) and Ubisoft Connect (`1771` and legacy `4740`).
+- Verify legacy-backup recognition, per-source freshness reporting, and persistence across launcher restarts.
+- Test adding and removing multiple custom roots, including overlapping folders, junctions, unavailable paths, multiple Ubisoft accounts, and similarly named sources.
+- Confirm every source is written to a separate destination and that no save or previous backup can be overwritten, merged, moved, restored, or deleted unintentionally.
+- Test panel controls, status messages, live refresh behavior, long paths, failed or interrupted copies, and backup attempts while Ghost Recon Wildlands is running.
+- Continue making independent manual save backups until this feature has passed end-to-end validation.
+
 ## Implemented gameplay contract
 
 Keep these points as the regression baseline:
@@ -65,12 +77,22 @@ Do not add input-based weapon tracking. Testing showed it can desynchronize thro
 - Terrain variations remain small and recognizably native.
 - The game remains stable during a representative multi-hour session.
 
-## Priority 2 — Runtime polish
+## Priority 2 — Runtime and launcher polish
 
+- Production launcher backend implemented; harden it through regression testing while preserving this contract:
+  - Detect Steam and Ubisoft Connect installations.
+  - Classify exact supported builds as green, structurally compatible unknown builds as amber, and incompatible signatures as red.
+  - Treat firewall isolation as optional: active is green and inactive is amber, never launch-blocking.
+  - Install and remove only firewall rules managed by this project, using elevation only for the requested action.
+  - Detect SayNoToEAC, link to the original source and instructions, and independently block attachment whenever EAC is active or loaded.
+  - Launch through the detected storefront, wait for `GRW.exe`, attach automatically, and minimize to the taskbar while active.
+  - Keep vanilla launch available even when a red condition blocks mod attachment.
+  - Restore hooks when `F5` is pressed, the launcher closes, or the game exits.
+  - Poll volatile state such as GRW/EAC processes and runtime health every second; cache executable hashing, installation discovery, firewall enumeration, and other comparatively expensive checks on a slower cadence.
+- Implement launcher/runtime supervision through a local named pipe or similarly narrow IPC boundary.
 - Improve startup synchronization and ignore wheel input until initial native gait and stance are trustworthy.
 - Decide which developer-only calibration and probe modes should remain in source but be excluded from public instructions.
-- Consider a small status UI or tray indicator for attached/restored state and current level.
-- Add a clean stop action in the launcher in addition to `F5`.
+- Decide whether the production window should expose the current movement level and stance or keep diagnostics behind an expandable panel.
 - Investigate practical watchdog/crash-recovery behavior without weakening exact-byte safety checks.
 - Keep `--verify`, `--restore`, and `--verbose` available for diagnosis.
 

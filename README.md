@@ -6,13 +6,14 @@
 
 A Windows mod that gives keyboard-and-mouse players granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*.
 
-The mouse wheel traverses one continuous range from a very slow walk to full jogging speed, while retaining the familiar `X` walk/jog shortcut.
+The mouse wheel traverses one continuous range from a very slow walk to full jogging speed, while retaining the familiar `X` walk/jog shortcut. This replaces Wildlands' default mouse-wheel weapon cycling; use the keyboard's `1`, `2`, and `3` keys to select weapon slots instead.
 
 ### Current behavior
 
 - 16 near-uniform walking levels from `0.05` to `0.60`, including the exact vanilla-walk anchor at `0.35`.
 - 11 evenly spaced jogging levels from `0.70` to `1.00`.
 - One unified mouse-wheel ladder, independent of the game's hidden native gait.
+- Mouse-wheel weapon cycling is replaced by movement-speed control; weapon-slot keys `1`, `2`, and `3` remain available.
 - `X` jumps from a walking-range speed to vanilla full jog, or from a jogging-range speed to vanilla walk.
 - Releasing sprint returns movement to vanilla full jog.
 - Standing ADS follows the underlying HIP level, with a deliberately limited maximum speed.
@@ -34,16 +35,18 @@ Do not use it in co-op, Ghost War, or any online session. Read the full [risk no
 - [Runtime, installation, and shutdown notes](release/README.md)
 - [License](LICENSE.txt)
 
-The repository includes the runtime, safety utility, installer definition, release-building script, and the focused research utilities used to locate and validate Wildlands' movement values. Generated binaries, memory captures, debugger packages, screenshots, and test logs are intentionally excluded.
+The repository includes the production launcher, supervised runtime, installer definition, release-building script, and the focused research utilities used to locate and validate Wildlands' movement values. Generated binaries, memory captures, debugger packages, screenshots, and test logs are intentionally excluded.
 
 ## Building from source
 
-The runtime and safety utility target .NET 8 for 64-bit Windows:
+The launcher and runtime target .NET 8 for 64-bit Windows:
 
 ```powershell
+dotnet build .\GRWLauncher\GRWLauncher.csproj -c Release
 dotnet build .\GRWMovementRuntime\GRWMovementRuntime.csproj -c Release
-dotnet build .\GRWSafetySetup\GRWSafetySetup.csproj -c Release
 ```
+
+The [launcher](GRWLauncher/README.md) performs live installation and safety checks, launches either the Steam or Ubisoft Connect edition, and supervises clean runtime restoration. Merely opening it is read-only; firewall changes, backups, launch, and attachment require explicit actions.
 
 To assemble local development packages:
 

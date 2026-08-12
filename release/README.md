@@ -15,6 +15,7 @@ Read [DISCLAIMER.txt](DISCLAIMER.txt) before use.
 - Walk HIP: 16 near-uniform levels from `0.05` to `0.60`, including the exact vanilla-walk anchor at `0.35`.
 - Jog HIP: 11 evenly spaced levels from `0.70` to `1.00` in `0.03` steps.
 - Mouse wheel traverses one unified ladder from the slowest walk through the fastest jog, regardless of the game's hidden native gait.
+- This replaces the vanilla mouse-wheel action that cycles among the three weapon slots. Use `1`, `2`, and `3` for direct weapon-slot selection.
 - Standing walk ADS follows a calibrated curve from coefficient `1.81` at vanilla walk to `2.48` at maximum walk, extrapolated through the lower walk levels.
 - Standing jog ADS follows the underlying HIP level and is capped at coefficient `3.40` to keep the fastest ADS movement believable and stable.
 - Crouching is detected from the game's native stance state. Crouch walk ADS uses a proportional `0.84–1.68` curve; crouch jog ADS uses coefficient `2.70`.
@@ -28,10 +29,10 @@ Small terrain-dependent speed changes on slopes are native Wildlands behavior. W
 ## Requirements
 
 - Windows 10 or 11 x64.
-- Ubisoft Connect edition of Ghost Recon Wildlands matching the supported executable instructions.
+- Steam or Ubisoft Connect edition of Ghost Recon Wildlands.
 - Offline single-player use.
 - SayNoToEAC installed separately from its original source.
-- An enabled outbound Windows Firewall block for `GRW.exe`.
+- Outbound isolation for Wildlands is strongly recommended but remains optional.
 
 SayNoToEAC is not included and this project does not install or modify it.
 
@@ -39,18 +40,17 @@ SayNoToEAC is not included and this project does not install or modify it.
 
 1. Back up your saves.
 2. Install SayNoToEAC using its original author's instructions.
-3. Run `GRWMovementSafety.exe`.
-4. Choose **Install recommended GRW-only firewall rules**.
-5. Confirm all required safety checks show `[OK]`.
-6. Start Wildlands and load an offline single-player save.
-7. Run `GRWAnalogueMovement.exe`.
-8. Complete the one-time risk acknowledgement.
+3. Run `GRWBetterMovementLauncher.exe`.
+4. Review the live checklist. Red items block only mod attachment; cautions such as firewall isolation and save backup remain optional.
+5. Optionally install the separate Wildlands and Ubisoft Connect firewall blocks from the launcher.
+6. Click **Launch with Better Movement for KBM** and complete the one-time risk acknowledgement.
+7. Load an offline single-player save. The launcher waits for `GRW.exe` and enables the runtime automatically.
 
 Do not use the mod in co-op, Ghost War, or any online session.
 
 ## Strict isolation
 
-The safety utility can additionally block detected Ubisoft Connect executables. This may prevent login, updates, cloud synchronization, and other Ubisoft games from functioning. It is optional and should only be enabled when cached offline launch works on the user's system.
+The launcher can additionally block detected Ubisoft Connect executables. This may prevent login, updates, cloud synchronization, and other Ubisoft games from functioning. It is optional and should only be enabled when cached offline launch works on the user's system.
 
 The standard mode blocks these Wildlands executables when present:
 
@@ -61,9 +61,9 @@ The standard mode blocks these Wildlands executables when present:
 ## Safe shutdown
 
 1. Pause the game.
-2. Press `F5` and wait for the runtime to report that the original instructions were restored.
-3. Exit Wildlands.
-4. Only then reconnect or remove firewall isolation.
+2. Click **Disable mod**, close the launcher and approve restoration, or press `F5`.
+3. Wait until the launcher reports that Better Movement is disabled.
+4. Exit Wildlands, then reconnect or remove firewall isolation.
 
 If the runtime is forcibly terminated, exit Wildlands before doing anything online. All memory changes disappear when the game process exits.
 
@@ -73,9 +73,20 @@ The runtime verifies the exact original bytes at every supported instruction sit
 
 ## Save backups
 
-The safety utility backs up detected Ubisoft save folders `1771` and `4740` to:
+The launcher checks and backs up the save containers belonging to the currently selected edition:
 
-`Documents\GRW Movement Mod\Save Backups\<timestamp>`
+- Steam: `3559`
+- Ubisoft Connect: `1771` and legacy container `4740`, when present
+
+The Save backup **Manage** panel detects the default location and allows additional custom or redirected save roots to be registered. Overlapping roots are rejected, including resolvable directory links, so the same container is not backed up twice.
+
+Backups are kept in separate edition and source-identity directories:
+
+`Documents\Better Movement for KBM\Save Backups\<Steam or Ubisoft Connect>\<source name and ID>\<timestamp>`
+
+Steam and Ubisoft Connect installations can use different Ubisoft save containers on the same account. In local testing, the Ubisoft Connect installation used `1771` while the Steam installation used `3559`; progress was therefore not shared automatically between those installations.
+
+The launcher's **Save backup** status follows the selected installation and every registered source independently. It returns to **Caution** if any source has no backup or contains files newer than its latest backup. Removing a custom source from the launcher never deletes its saves or existing backups, and the launcher never restores or copies saves between sources automatically.
 
 ## Antivirus notices
 
@@ -83,12 +94,12 @@ Process-memory modification and firewall management can trigger security-product
 
 ## Uninstallation
 
-- Installer: uninstall normally; its uninstaller removes only firewall rules prefixed `GRW Movement Mod - `.
-- Portable: run the safety utility and choose **Remove rules created by this utility**, then delete the extracted folder.
+- Remove any launcher-managed firewall rules from the launcher before uninstalling or deleting it.
+- The launcher removes only rules prefixed `Better Movement for KBM - ` and leaves rules created by other tools untouched.
 - SayNoToEAC must be removed separately using its original instructions.
 
 ## Support boundaries
 
-Supported: the tested Ubisoft Connect Windows build and offline single-player.
+Supported: the tested Windows executable and offline single-player. Steam and Ubisoft Connect storefront launch paths are detected independently.
 
 Unsupported: multiplayer/co-op, unknown executable builds, Steam Input/controller emulation combinations, other operating systems, or operation with Easy Anti-Cheat active.
