@@ -107,7 +107,7 @@
             <Setter Property="BorderBrush" Value="#566356" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="11,8" />
-            <Setter Property="MaxWidth" Value="380" />
+            <Setter Property="MaxWidth" Value="520" />
             <Setter Property="HasDropShadow" Value="True" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -115,7 +115,8 @@
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
+                            <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
+                                       TextWrapping="Wrap" />
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>

@@ -19,7 +19,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-UninstallDisplayIcon={app}\GRWBetterMovementLauncher.exe
+UninstallDisplayIcon={app}\Better Movement for KBM - GRW.exe
 WizardStyle=modern
 
 [Tasks]
@@ -29,9 +29,9 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Better Movement for KBM"; Filename: "{app}\GRWBetterMovementLauncher.exe"
+Name: "{group}\Better Movement for KBM"; Filename: "{app}\Better Movement for KBM - GRW.exe"
 Name: "{group}\Read Me"; Filename: "{app}\README.md"
-Name: "{autodesktop}\Better Movement for KBM"; Filename: "{app}\GRWBetterMovementLauncher.exe"; Tasks: desktopicon
+Name: "{autodesktop}\Better Movement for KBM"; Filename: "{app}\Better Movement for KBM - GRW.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\GRWBetterMovementLauncher.exe"; Description: "Open Better Movement for KBM"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\Better Movement for KBM - GRW.exe"; Description: "Open Better Movement for KBM"; Flags: postinstall nowait skipifsilent

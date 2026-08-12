@@ -15,6 +15,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     private bool _busy;
     private bool _refreshInProgress;
     private bool _runtimeActive;
+    private bool _runtimeDetected;
     private bool _gameRunning;
     private string _headline = "Checking your installation…";
     private string _summary = "Please wait while the launcher evaluates the local environment.";
@@ -28,7 +29,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     {
         _backend = backend;
         CheckActionCommand = new RelayCommand(item => _ = ExecuteCheckActionAsync((BindableCheck)item!), _ => !Busy);
-        LaunchCommand = new RelayCommand(_ => _ = StartWithModAsync(launchGame: true), _ => CanLaunch && !Busy && !RuntimeActive);
+        LaunchCommand = new RelayCommand(_ => _ = StartWithModAsync(launchGame: !GameRunning), _ => CanLaunch && !Busy && !RuntimeActive);
         LaunchVanillaCommand = new RelayCommand(_ => _ = LaunchVanillaAsync(), _ => !Busy && !RuntimeActive);
         AttachCommand = new RelayCommand(_ => _ = StartWithModAsync(launchGame: false), _ => CanLaunch && GameRunning && !Busy && !RuntimeActive);
         RestoreCommand = new RelayCommand(_ => _ = StopRuntimeAsync(), _ => RuntimeActive && !Busy);
@@ -47,10 +48,37 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     public ICommand RestoreCommand { get; }
     public ICommand ClearLogCommand { get; }
 
-    public bool Busy { get => _busy; private set { if (Set(ref _busy, value)) RefreshCommands(); } }
-    public bool RuntimeActive { get => _runtimeActive; private set { if (Set(ref _runtimeActive, value)) RefreshCommands(); } }
-    public bool GameRunning { get => _gameRunning; private set { if (Set(ref _gameRunning, value)) RefreshCommands(); } }
+    public bool Busy { get => _busy; private set { if (Set(ref _busy, value)) { RefreshCommands(); OnPropertyChanged(nameof(LaunchToolTip)); } } }
+    public bool RuntimeActive { get => _runtimeActive; private set { if (Set(ref _runtimeActive, value)) { RefreshCommands(); OnPropertyChanged(nameof(LaunchToolTip)); } } }
+    public bool RuntimeDetected { get => _runtimeDetected; private set => Set(ref _runtimeDetected, value); }
+    public bool GameRunning
+    {
+        get => _gameRunning;
+        private set
+        {
+            if (!Set(ref _gameRunning, value)) return;
+            RefreshCommands();
+            OnPropertyChanged(nameof(PrimaryActionLabel));
+            OnPropertyChanged(nameof(LaunchToolTip));
+        }
+    }
     public bool CanLaunch => Checks.Count > 0 && Checks.All(item => item.Status != CheckStatus.Blocked);
+    public string PrimaryActionLabel => GameRunning
+        ? "Enable Better Movement for KBM"
+        : "Launch with Better Movement for KBM";
+    public string? LaunchToolTip
+    {
+        get
+        {
+            if (Checks.Any(item => item.Status == CheckStatus.Blocked)) return "Mod cannot run due to a blocked item";
+            if (RuntimeActive) return "Better Movement for KBM is already running";
+            if (Busy) return "Please wait for the current launcher action to finish";
+            if (Checks.Count == 0) return "Safety and compatibility checks are still running";
+            return GameRunning
+                ? "Enables the mod in the running game"
+                : "Launches the game together with the mod";
+        }
+    }
     public string Headline { get => _headline; private set => Set(ref _headline, value); }
     public string Summary { get => _summary; private set => Set(ref _summary, value); }
     public string Storefront { get => _storefront; private set => Set(ref _storefront, value); }
@@ -79,6 +107,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
             GamePath = snapshot.GamePath;
             GameRunning = snapshot.GameRunning;
             RuntimeActive = snapshot.RuntimeActive;
+            RuntimeDetected = snapshot.RuntimeDetected;
             if (runtimeWasActive && !RuntimeActive)
             {
                 Activity = snapshot.GameRunning ? "The movement runtime stopped; Ghost Recon Wildlands remains open." : "Ghost Recon Wildlands and the movement runtime have stopped.";
@@ -102,6 +131,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
                 Activity = RuntimeActive ? "Better Movement for KBM is active." : GameRunning ? "Ghost Recon Wildlands is running without the mod." : "Ready.";
             }
             OnPropertyChanged(nameof(CanLaunch));
+            OnPropertyChanged(nameof(LaunchToolTip));
         }
     }
 
@@ -139,6 +169,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
             if (launchGame) await _backend.LaunchWithModAsync(progress);
             else await _backend.AttachAsync(progress);
             RuntimeActive = true;
+            RuntimeDetected = true;
             Headline = "Better Movement for KBM is active";
             Summary = "The launcher is supervising the runtime and will restore the original in-memory instructions when the mod stops.";
         }
@@ -181,6 +212,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
         {
             await _backend.StopRuntimeAsync(CreateProgress());
             RuntimeActive = false;
+            RuntimeDetected = false;
             Activity = "Better Movement for KBM is disabled; Ghost Recon Wildlands remains open.";
             AddLog("Original in-memory instructions restored; runtime stopped.");
             await RefreshAsync(recordInLog: false);
@@ -189,6 +221,28 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
         {
             Activity = exception.Message;
             AddLog($"Unable to disable mod cleanly: {exception.Message}");
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    public async Task<bool> RemoveLauncherDataAsync()
+    {
+        if (RuntimeDetected || Busy) return false;
+        Busy = true;
+        try
+        {
+            LauncherActionResult result = await _backend.ExecuteAsync("remove-launcher-data");
+            Activity = result.Message;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Activity = exception.Message;
+            AddLog($"Cleanup failed: {exception.Message}");
+            return false;
         }
         finally
         {
@@ -222,7 +276,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
         {
             SummaryBrush = new SolidColorBrush(Color.FromRgb(101, 201, 135));
             Headline = "Better Movement for KBM is active";
-            Summary = "The runtime is attached and supervised. Disable the mod or close the launcher to restore the original instructions.";
+            Summary = "The runtime is attached and active. Click the 'Disable in running game' button to restore vanilla behaviour.";
             return;
         }
 

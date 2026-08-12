@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly LauncherViewModel _viewModel;
     private readonly DispatcherTimer _liveCheckTimer;
     private bool _closingAfterRestore;
+    private bool _launcherDataRemoved;
     private string? _easyAntiCheatDirectory;
     private TaskCompletionSource? _antiCheatPanelCompletion;
     private GameInstallation? _saveInstallation;
@@ -35,15 +36,14 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         _viewModel.ActivityLog.CollectionChanged += (_, _) =>
             Dispatcher.BeginInvoke(() => ActivityLogScrollViewer.ScrollToEnd(), DispatcherPriority.Background);
-        _viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(LauncherViewModel.RuntimeActive) && _viewModel.RuntimeActive)
-                Dispatcher.BeginInvoke(() => WindowState = WindowState.Minimized);
-        };
         Loaded += async (_, _) => await _viewModel.InitializeAsync();
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         _liveCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _liveCheckTimer.Tick += async (_, _) => await _viewModel.RefreshAsync(recordInLog: false);
+        _liveCheckTimer.Tick += async (_, _) =>
+        {
+            if (AntiCheatOverlay.Visibility == Visibility.Visible) RefreshAntiCheatPanelStatus();
+            await _viewModel.RefreshAsync(recordInLog: false);
+        };
         _liveCheckTimer.Start();
     }
 
@@ -83,6 +83,18 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (CleanupFinalOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            CloseFinalCleanupConfirmation();
+            e.Handled = true;
+            return;
+        }
+        if (CleanupOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            CloseCleanupPanel();
+            e.Handled = true;
+            return;
+        }
         if (CautionOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             CloseCautionPanel();
@@ -102,26 +114,14 @@ public partial class MainWindow : Window
             return;
         }
         if (e.Key != Key.System || e.SystemKey != Key.Space) return;
-        SystemCommands.ShowSystemMenu(this, PointToScreen(new Point(0, 31)));
+        SystemCommands.ShowSystemMenu(this, PointToScreen(new Point(0, 0)));
         e.Handled = true;
     }
 
-    public Task ShowAntiCheatManagementAsync(string gameDirectory, bool installed)
+    public Task ShowAntiCheatManagementAsync(string gameDirectory)
     {
         _easyAntiCheatDirectory = Path.Combine(gameDirectory, "EasyAntiCheat");
-        AntiCheatStatusHeading.Text = installed ? "SayNoToEAC detected" : "SayNoToEAC not detected";
-        AntiCheatStatusDetail.Text = installed
-            ? $"Required stub DLLs and original .BAK files were found in {_easyAntiCheatDirectory}"
-            : $"The expected stub DLLs and original .BAK files were not found in {_easyAntiCheatDirectory}";
-        AntiCheatStatusDetail.ToolTip = AntiCheatStatusDetail.Text;
-
-        Brush statusBrush = installed ? FindBrush("ReadyBrush") : FindBrush("BlockedBrush");
-        AntiCheatStatusBorder.BorderBrush = statusBrush;
-        AntiCheatStatusCircle.Background = statusBrush;
-        AntiCheatStatusGlyph.Text = installed ? "✓" : "×";
-        AntiCheatStatusGlyph.RenderTransform = installed
-            ? new TranslateTransform(-1, 0)
-            : new TranslateTransform(0, -2);
+        RefreshAntiCheatPanelStatus();
 
         _antiCheatPanelCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LauncherTitleBar.IsEnabled = false;
@@ -132,6 +132,38 @@ public partial class MainWindow : Window
         AntiCheatOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(110)));
         AntiCheatOverlay.Focus();
         return _antiCheatPanelCompletion.Task;
+    }
+
+    private void RefreshAntiCheatPanelStatus()
+    {
+        if (string.IsNullOrWhiteSpace(_easyAntiCheatDirectory)) return;
+        string gameDirectory = Directory.GetParent(_easyAntiCheatDirectory)?.FullName ?? "";
+        bool installed = ProductionLauncherBackend.SayNoToEacAppearsInstalled(gameDirectory);
+        bool backupsAvailable = File.Exists(Path.Combine(_easyAntiCheatDirectory, "EasyAntiCheat_x64.dll.BAK"))
+            && File.Exists(Path.Combine(_easyAntiCheatDirectory, "EasyAntiCheat_x86.dll.BAK"));
+        AntiCheatStatusHeading.Text = installed ? "SayNoToEAC detected" : "SayNoToEAC not detected";
+        AntiCheatStatusDetail.Text = installed
+            ? $"Required replacement DLLs were found in {_easyAntiCheatDirectory}"
+            : $"The expected SayNoToEAC replacement DLLs were not found in {_easyAntiCheatDirectory}";
+        AntiCheatStatusDetail.ToolTip = AntiCheatStatusDetail.Text;
+
+        Brush statusBrush = installed ? FindBrush("ReadyBrush") : FindBrush("BlockedBrush");
+        AntiCheatStatusBorder.BorderBrush = statusBrush;
+        AntiCheatStatusCircle.Background = statusBrush;
+        AntiCheatStatusGlyph.Text = installed ? "✓" : "×";
+        AntiCheatStatusGlyph.RenderTransform = installed ? new TranslateTransform(-1, 0) : new TranslateTransform(0, -2);
+
+        AntiCheatBackupStatusHeading.Text = backupsAvailable ? "Original EAC backups detected" : "Original EAC backups not detected";
+        AntiCheatBackupStatusDetail.Text = backupsAvailable
+            ? $"Both optional original .BAK files were found in {_easyAntiCheatDirectory}"
+            : "The optional original .BAK files were not both found.";
+        AntiCheatBackupStatusDetail.ToolTip = AntiCheatBackupStatusDetail.Text;
+        Brush backupBrush = backupsAvailable ? FindBrush("ReadyBrush") : FindBrush("WarningBrush");
+        AntiCheatBackupStatusBorder.BorderBrush = backupBrush;
+        AntiCheatBackupStatusCircle.Background = backupBrush;
+        AntiCheatBackupStatusGlyph.Text = backupsAvailable ? "✓" : "!";
+        AntiCheatBackupStatusGlyph.RenderTransform = backupsAvailable
+            ? new TranslateTransform(-1, 0) : new TranslateTransform(0, -1);
     }
 
     private Brush FindBrush(string key) => (Brush)FindResource(key);
@@ -192,7 +224,6 @@ public partial class MainWindow : Window
     {
         _saveInstallation = installation;
         _savePanelCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        SavePanelHeading.Text = $"{installation.Storefront} save locations";
         RefreshSavePanel();
         LauncherTitleBar.IsEnabled = false;
         LauncherBody.IsEnabled = false;
@@ -207,13 +238,25 @@ public partial class MainWindow : Window
     private void RefreshSavePanel(string? message = null)
     {
         if (_saveInstallation is null) return;
-        IReadOnlyList<SaveLocationInfo> locations = SaveBackupService.GetLocations(_saveInstallation);
+        bool gameRunning = Process.GetProcessesByName("GRW").Length > 0;
+        IReadOnlyList<GameInstallation> installations = GameLocator.FindAll()
+            .Append(_saveInstallation)
+            .GroupBy(item => item.Storefront, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+        IReadOnlyList<SaveLocationInfo> locations = installations
+            .SelectMany(SaveBackupService.GetLocations)
+            .Select(location => location with
+            {
+                CanBackUp = !gameRunning,
+                BackUpToolTip = gameRunning
+                    ? "Exit Ghost Recon Wildlands before creating a backup."
+                    : "Creates a new timestamped backup of this save location."
+            }).ToArray();
         SaveLocationsList.ItemsSource = locations;
         SavePanelStatus.Text = message ?? (locations.Count == 0
-            ? "No save locations containing this edition's save containers were detected."
-            : $"{locations.Count} independent save location{(locations.Count == 1 ? "" : "s")} detected.");
-        bool gameRunning = Process.GetProcessesByName("GRW").Length > 0;
-        BackUpAllSaveLocationsButton.IsEnabled = locations.Count > 0 && !gameRunning;
+            ? "No save locations for any detected installation were found."
+            : $"{locations.Count} independent save source{(locations.Count == 1 ? "" : "s")} detected.");
         if (gameRunning) SavePanelStatus.Text = "Exit Ghost Recon Wildlands before creating a backup.";
         RemoveSaveLocationButton.IsEnabled = SaveLocationsList.SelectedItem is SaveLocationInfo { IsAutomatic: false };
     }
@@ -245,19 +288,21 @@ public partial class MainWindow : Window
     {
         if (SaveLocationsList.SelectedItem is not SaveLocationInfo { IsAutomatic: false } location) return;
         if (_saveInstallation is null) return;
-        SaveBackupService.RemoveCustomLocation(_saveInstallation, location.Id);
+        SaveBackupService.RemoveCustomLocation(location.Installation, location.Id);
         RefreshSavePanel("Custom save location removed from the launcher. No save files or backups were deleted.");
     }
 
-    private async void BackUpAllSaveLocationsButton_Click(object sender, RoutedEventArgs e)
+    private async void BackUpSaveLocationButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_saveInstallation is null || Process.GetProcessesByName("GRW").Length > 0) return;
+        if (_saveInstallation is null || sender is not Button { Tag: SaveLocationInfo location } ||
+            Process.GetProcessesByName("GRW").Length > 0) return;
+        SaveLocationsList.IsHitTestVisible = false;
         SavePanelActions.IsEnabled = false;
-        SavePanelStatus.Text = "Creating source-separated backups…";
+        SavePanelStatus.Text = $"Creating a new timestamped backup of {location.Name}…";
         try
         {
-            string destination = await Task.Run(() => SaveBackupService.BackupAll(_saveInstallation));
-            RefreshSavePanel($"All save locations were backed up beneath {destination}");
+            string destination = await Task.Run(() => SaveBackupService.BackupLocation(location.Installation, location.Id));
+            RefreshSavePanel($"{location.Name} was backed up to {destination}");
         }
         catch (Exception exception)
         {
@@ -265,9 +310,34 @@ public partial class MainWindow : Window
         }
         finally
         {
+            SaveLocationsList.IsHitTestVisible = true;
             SavePanelActions.IsEnabled = true;
             RefreshSavePanel(SavePanelStatus.Text);
         }
+    }
+
+    private void OpenSaveLocationButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: SaveLocationInfo location }) OpenFolder(location.SaveFilesPath, "save location");
+    }
+
+    private void OpenSaveBackupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: SaveLocationInfo { LatestBackupPath: not null } location })
+            OpenFolder(location.LatestBackupPath, "backup location");
+    }
+
+    private void OpenFolder(string path, string description)
+    {
+        if (!Directory.Exists(path))
+        {
+            RefreshSavePanel($"The {description} is no longer available: {path}");
+            return;
+        }
+
+        ProcessStartInfo startInfo = new("explorer.exe") { UseShellExecute = true };
+        startInfo.ArgumentList.Add(path);
+        Process.Start(startInfo);
     }
 
     private void CloseSavePanelButton_Click(object sender, RoutedEventArgs e) => CloseSavePanel();
@@ -290,6 +360,98 @@ public partial class MainWindow : Window
             SaveLocationsList.ItemsSource = null;
         };
         SaveBackupOverlay.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private void ShowCleanupPanelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.RuntimeDetected) return;
+        CleanupPanelStatus.Text = "";
+        CleanupFinalOverlay.Visibility = Visibility.Collapsed;
+        ConfirmCleanupButton.IsEnabled = true;
+        CancelCleanupButton.IsEnabled = true;
+        LauncherTitleBar.IsEnabled = false;
+        LauncherBody.IsEnabled = false;
+        CleanupOverlay.IsHitTestVisible = true;
+        CleanupOverlay.Opacity = 0;
+        CleanupOverlay.Visibility = Visibility.Visible;
+        CleanupOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(110)));
+        CleanupOverlay.Focus();
+    }
+
+    private void CloseCleanupPanelButton_Click(object sender, RoutedEventArgs e) => CloseCleanupPanel();
+
+    private void CloseCleanupPanel()
+    {
+        if (!CleanupOverlay.IsHitTestVisible || CleanupOverlay.Visibility != Visibility.Visible || !CancelCleanupButton.IsEnabled) return;
+        CleanupOverlay.IsHitTestVisible = false;
+        DoubleAnimation fade = new(0, TimeSpan.FromMilliseconds(90));
+        fade.Completed += (_, _) =>
+        {
+            CleanupOverlay.Visibility = Visibility.Collapsed;
+            CleanupOverlay.BeginAnimation(OpacityProperty, null);
+            CleanupOverlay.Opacity = 1;
+            LauncherTitleBar.IsEnabled = true;
+            LauncherBody.IsEnabled = true;
+        };
+        CleanupOverlay.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private void ShowFinalCleanupConfirmationButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.RuntimeDetected) return;
+        CleanupOverlay.IsHitTestVisible = false;
+        FinalCleanupYesButton.IsEnabled = true;
+        FinalCleanupNoButton.IsEnabled = true;
+        CleanupFinalOverlay.IsHitTestVisible = true;
+        CleanupFinalOverlay.Opacity = 0;
+        CleanupFinalOverlay.Visibility = Visibility.Visible;
+        CleanupFinalOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(90)));
+        CleanupFinalOverlay.Focus();
+    }
+
+    private void FinalCleanupNoButton_Click(object sender, RoutedEventArgs e) => CloseFinalCleanupConfirmation();
+
+    private void CloseFinalCleanupConfirmation()
+    {
+        if (CleanupFinalOverlay.Visibility != Visibility.Visible || !FinalCleanupNoButton.IsEnabled) return;
+        CleanupFinalOverlay.IsHitTestVisible = false;
+        DoubleAnimation fade = new(0, TimeSpan.FromMilliseconds(75));
+        fade.Completed += (_, _) =>
+        {
+            CleanupFinalOverlay.Visibility = Visibility.Collapsed;
+            CleanupFinalOverlay.BeginAnimation(OpacityProperty, null);
+            CleanupFinalOverlay.Opacity = 1;
+            CleanupOverlay.IsHitTestVisible = true;
+        };
+        CleanupFinalOverlay.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private async void FinalCleanupYesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.RuntimeDetected) return;
+        FinalCleanupYesButton.IsEnabled = false;
+        FinalCleanupNoButton.IsEnabled = false;
+        ConfirmCleanupButton.IsEnabled = false;
+        CancelCleanupButton.IsEnabled = false;
+        CleanupPanelStatus.Text = "Removing launcher-created data…";
+        _liveCheckTimer.Stop();
+        bool removed = await _viewModel.RemoveLauncherDataAsync();
+        if (!removed)
+        {
+            CleanupPanelStatus.Text = _viewModel.Activity;
+            CleanupFinalOverlay.Visibility = Visibility.Collapsed;
+            CleanupFinalOverlay.BeginAnimation(OpacityProperty, null);
+            CleanupFinalOverlay.Opacity = 1;
+            CleanupFinalOverlay.IsHitTestVisible = false;
+            CleanupOverlay.IsHitTestVisible = true;
+            ConfirmCleanupButton.IsEnabled = true;
+            CancelCleanupButton.IsEnabled = true;
+            _liveCheckTimer.Start();
+            return;
+        }
+
+        _launcherDataRemoved = true;
+        Close();
     }
 
     private void ShowCautionPanelButton_Click(object sender, RoutedEventArgs e)
@@ -349,8 +511,11 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _liveCheckTimer.Stop();
-        Rect bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
-        WindowPlacementStore.Save(bounds.Left, bounds.Top);
+        if (!_launcherDataRemoved)
+        {
+            Rect bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+            WindowPlacementStore.Save(bounds.Left, bounds.Top);
+        }
         _viewModel.Dispose();
         base.OnClosed(e);
     }

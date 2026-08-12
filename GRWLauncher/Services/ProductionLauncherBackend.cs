@@ -53,7 +53,7 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
             {
                 checks.Add(new("installation", "Game installation", "Ghost Recon Wildlands was not detected. Select the folder containing GRW.exe.", CheckStatus.Blocked, "Choose", "choose-game"));
                 checks.Add(new("executable", "Game executable", "Cannot verify compatibility until the installation is selected.", CheckStatus.Blocked));
-                checks.Add(new("saynotoeac", "Anti-cheat configuration", "Cannot inspect SayNoToEAC until the installation is selected.", CheckStatus.Blocked, "Manage", "manage-eac"));
+                checks.Add(new("saynotoeac", "SayNoToEAC", "Cannot inspect SayNoToEAC until the installation is selected.", CheckStatus.Blocked, "Manage", "manage-eac"));
             }
             else
             {
@@ -64,25 +64,27 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
 
             string[] eacProcesses = ActiveEacProcesses();
             checks.Add(eacProcesses.Length == 0
-                ? new("eac", "Easy Anti-Cheat", "No active Easy Anti-Cheat process detected.", CheckStatus.Ready)
+                ? gameRunning
+                    ? new("eac", "Easy Anti-Cheat", "No active Easy Anti-Cheat process detected.", CheckStatus.Ready)
+                    : new("eac", "Easy Anti-Cheat", "Not detected, but Ghost Recon Wildlands is not running.", CheckStatus.Inactive)
                 : new("eac", "Easy Anti-Cheat", $"Active process detected: {string.Join(", ", eacProcesses)}.", CheckStatus.Blocked));
 
             RefreshFirewallIfNeeded();
-            checks.Add(BuildFirewallCheck("grw-firewall", "Ghost Recon Wildlands network isolation", _gameFirewall, "game"));
-            checks.Add(BuildFirewallCheck("ubisoft-firewall", "Ubisoft Connect isolation", _ubisoftFirewall, "ubisoft"));
+            checks.Add(BuildFirewallCheck("grw-firewall", "Ghost Recon Wildlands Windows Firewall block", _gameFirewall, "game"));
+            checks.Add(BuildFirewallCheck("ubisoft-firewall", "Ubisoft Connect Windows Firewall block", _ubisoftFirewall, "ubisoft"));
 
             checks.Add(foreignRuntime
-                ? new("hooks", "Runtime hook state", "Another movement runtime is already running. Press F5 in that runtime before starting a new one.", CheckStatus.Blocked)
+                ? new("hooks", "Mod runtime hook", "Another movement runtime is already running. Press F5 in that runtime before starting a new one.", CheckStatus.Blocked)
                 : runtimeActive
-                    ? new("hooks", "Runtime hook state", "Better Movement for KBM is attached and supervised by this launcher.", CheckStatus.Ready)
+                    ? new("hooks", "Mod runtime hook", "Attached and Active.", CheckStatus.Ready)
                     : gameRunning
-                        ? new("hooks", "Runtime hook state", "Ghost Recon Wildlands is running; exact instructions will be verified before attachment.", CheckStatus.Ready, "Verify", "verify-hooks")
-                        : new("hooks", "Runtime hook state", "Original instructions will be verified exactly when Ghost Recon Wildlands starts.", CheckStatus.Ready));
+                        ? new("hooks", "Mod runtime hook", "Ghost Recon Wildlands is running without the mod.", CheckStatus.Inactive, "Verify", "verify-hooks")
+                        : new("hooks", "Mod runtime hook", "Ghost Recon Wildlands is not running.", CheckStatus.Inactive));
 
             checks.Add(BuildBackupCheck(_installation));
             string storefront = _installation?.Storefront ?? "Not detected";
             string path = _installation?.Directory ?? "Choose the folder containing GRW.exe";
-            return new LauncherSnapshot(storefront, path, checks, gameRunning, runtimeActive);
+            return new LauncherSnapshot(storefront, path, checks, gameRunning, runtimeActive, runtimeActive || foreignRuntime);
         }
         finally
         {
@@ -109,13 +111,13 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
             case "install-grw-firewall":
             case "remove-grw-firewall":
                 EnsureInstallation();
-                RunFirewall(actionId == "install-grw-firewall" ? "install-game" : "remove-game", _installation!.Directory);
-                return new LauncherActionResult(actionId.StartsWith("install", StringComparison.Ordinal) ? "Ghost Recon Wildlands isolation rules installed." : "Launcher-managed Ghost Recon Wildlands isolation rules removed.");
+                RunFirewall(actionId == "install-grw-firewall" ? "install-game" : "remove-game-blocks", _installation!.Directory);
+                return new LauncherActionResult(actionId.StartsWith("install", StringComparison.Ordinal) ? "Ghost Recon Wildlands Windows Firewall block installed." : "Detected Ghost Recon Wildlands Windows Firewall block rules uninstalled.");
 
             case "install-ubisoft-firewall":
             case "remove-ubisoft-firewall":
-                RunFirewall(actionId == "install-ubisoft-firewall" ? "install-ubisoft" : "remove-ubisoft");
-                return new LauncherActionResult(actionId.StartsWith("install", StringComparison.Ordinal) ? "Ubisoft Connect isolation rules installed." : "Ubisoft Connect isolation rules uninstalled.");
+                RunFirewall(actionId == "install-ubisoft-firewall" ? "install-ubisoft" : "remove-ubisoft-blocks");
+                return new LauncherActionResult(actionId.StartsWith("install", StringComparison.Ordinal) ? "Ubisoft Connect Windows Firewall block installed." : "Detected Ubisoft Connect Windows Firewall block rules uninstalled.");
 
             case "manage-saves":
                 EnsureInstallation();
@@ -124,13 +126,17 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
                 await saveWindow.ShowSaveManagementAsync(_installation!);
                 return new LauncherActionResult("Save backup management panel closed.", ShouldLog: false);
 
+            case "remove-launcher-data":
+                if (_runtimeProcess is { HasExited: false } || Process.GetProcessesByName("GRWAnalogueMovement").Length > 0)
+                    throw new InvalidOperationException("Disable Better Movement for KBM before removing launcher data.");
+                await Task.Run(LauncherCleanupService.RemoveLauncherData, cancellationToken);
+                return new LauncherActionResult("Launcher-created backups, local data, and managed firewall rules were removed.");
+
             case "manage-eac":
                 EnsureInstallation();
                 if (System.Windows.Application.Current.MainWindow is not MainWindow mainWindow)
                     throw new InvalidOperationException("The launcher window is unavailable.");
-                await mainWindow.ShowAntiCheatManagementAsync(
-                    _installation!.Directory,
-                    SayNoToEacAppearsInstalled(_installation.Directory));
+                await mainWindow.ShowAntiCheatManagementAsync(_installation!.Directory);
                 return new LauncherActionResult("SayNoToEAC management panel closed.", ShouldLog: false);
 
             case "show-signatures":
@@ -152,14 +158,32 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
     public async Task LaunchWithModAsync(IProgress<string> progress, CancellationToken cancellationToken = default)
     {
         EnsureInstallation();
+        bool launchedGame = false;
+        DateTime startupDeadline = DateTime.UtcNow.AddMinutes(4);
         if (Process.GetProcessesByName("GRW").Length == 0)
         {
             progress.Report($"Starting Ghost Recon Wildlands through {_installation!.Storefront}…");
             LaunchGame(_installation);
-            progress.Report("Waiting for GRW.exe…");
-            await WaitForGameAsync(cancellationToken);
+            launchedGame = true;
         }
-        await StartRuntimeAsync(progress, cancellationToken);
+
+        while (true)
+        {
+            if (launchedGame)
+            {
+                progress.Report("Waiting for a stable GRW.exe process…");
+                await WaitForStableGameAsync(startupDeadline, cancellationToken);
+            }
+            try
+            {
+                await StartRuntimeAsync(progress, cancellationToken);
+                return;
+            }
+            catch (RuntimeStartupInterruptedException) when (launchedGame && DateTime.UtcNow < startupDeadline)
+            {
+                progress.Report("Ghost Recon Wildlands startup was interrupted by the launcher. Complete any Ubisoft Connect prompt; the mod will keep waiting…");
+            }
+        }
     }
 
     public Task LaunchVanillaAsync(IProgress<string> progress, CancellationToken cancellationToken = default)
@@ -238,12 +262,13 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         if (!_runtimeProcess.Start()) throw new InvalidOperationException("Could not start the movement runtime.");
         _runtimeProcess.BeginOutputReadLine();
         _runtimeProcess.BeginErrorReadLine();
-        await Task.Delay(1200, cancellationToken);
+        await Task.Delay(3000, cancellationToken);
         if (_runtimeProcess.HasExited)
         {
             int exitCode = _runtimeProcess.ExitCode;
             string failure = string.IsNullOrWhiteSpace(_runtimeFailure) ? $"Runtime exited with code {exitCode}." : _runtimeFailure;
             DisposeRuntimeHandles();
+            if (exitCode == 0) throw new RuntimeStartupInterruptedException();
             throw new InvalidOperationException(failure);
         }
         progress.Report("Better Movement for KBM is active.");
@@ -257,20 +282,30 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
     }
 
-    private static async Task WaitForGameAsync(CancellationToken cancellationToken)
+    private static async Task WaitForStableGameAsync(DateTime deadlineUtc, CancellationToken cancellationToken)
     {
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(4));
+        TimeSpan remaining = deadlineUtc - DateTime.UtcNow;
+        if (remaining <= TimeSpan.Zero) throw new TimeoutException("Ghost Recon Wildlands did not start within four minutes.");
+        timeout.CancelAfter(remaining);
         try
         {
-            while (Process.GetProcessesByName("GRW").Length == 0) await Task.Delay(500, timeout.Token);
-            await Task.Delay(1500, timeout.Token);
+            DateTime? continuouslyRunningSince = null;
+            while (true)
+            {
+                bool running = Process.GetProcessesByName("GRW").Length > 0;
+                continuouslyRunningSince = running ? continuouslyRunningSince ?? DateTime.UtcNow : null;
+                if (continuouslyRunningSince is not null && DateTime.UtcNow - continuouslyRunningSince >= TimeSpan.FromSeconds(4)) return;
+                await Task.Delay(500, timeout.Token);
+            }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException("Ghost Recon Wildlands did not start within four minutes.");
         }
     }
+
+    private sealed class RuntimeStartupInterruptedException : Exception { }
 
     private LauncherCheck BuildExecutableCheck(GameInstallation installation)
     {
@@ -288,25 +323,25 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         {
             Task<string> hashTask = StartHashTask(executable, info);
             if (!hashTask.IsCompleted)
-                return new("executable", "Game executable", "Analyzing executable build…", CheckStatus.Warning, "Details", null,
+                return new("executable", "Game executable", "Analyzing executable build…", CheckStatus.Warning, null, null,
                     "The executable is being identified in the background. Live game code will still be checked before enabling the mod.");
             if (hashTask.IsCompletedSuccessfully) hash = hashTask.Result;
             else
-                return new("executable", "Game executable", "Build identification unavailable.", CheckStatus.Warning, "Review", "show-signatures",
+                return new("executable", "Game executable", "Build identification unavailable.", CheckStatus.Warning, null, null,
                     "The executable hash could not be read. Live game code will still be checked before enabling the mod.");
         }
 
         string version = installation.BuildIdentifier ?? $"Ubisoft executable matches Steam build {TestedSteamBuild}";
         return hash!.Equals(TestedExecutableHash, StringComparison.OrdinalIgnoreCase)
-            ? new("executable", "Game executable", "Tested build recognized.", CheckStatus.Ready, "Details", "show-signatures",
+            ? new("executable", "Game executable", $"Game executable matches the compatible Steam build {TestedSteamBuild}.", CheckStatus.Ready, null, null,
                 $"{version}. The executable matches the tested SHA-256. Live game code is checked again before enabling the mod.")
-            : new("executable", "Game executable", "Untested build detected.", CheckStatus.Warning, "Review", "show-signatures",
+            : new("executable", "Game executable", "Untested build detected.", CheckStatus.Warning, null, null,
                 $"{version}. The mod enables only if every live code check passes.");
     }
 
     private static LauncherCheck BuildSayNoToEacCheck(string gameDirectory) => SayNoToEacAppearsInstalled(gameDirectory)
-        ? new("saynotoeac", "Anti-cheat configuration", "SayNoToEAC stub DLLs and original .BAK files detected.", CheckStatus.Ready, "Manage", "manage-eac")
-        : new("saynotoeac", "Anti-cheat configuration", "Expected SayNoToEAC stub/backup layout was not detected.", CheckStatus.Blocked, "Manage", "manage-eac");
+        ? new("saynotoeac", "SayNoToEAC", "SayNoToEAC replacement DLLs detected.", CheckStatus.Ready, "Manage", "manage-eac")
+        : new("saynotoeac", "SayNoToEAC", "SayNoToEAC was not detected in this game installation.", CheckStatus.Blocked, "Manage", "manage-eac");
 
     private static LauncherCheck BuildFirewallCheck(string id, string title, FirewallStatus? status, string category)
     {
@@ -315,12 +350,11 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         string actionPrefix = category == "game" ? "grw" : "ubisoft";
         if (ready)
         {
-            string ownership = status.Managed > 0 ? "Removable isolation rules are active." : "Compatible external block rules are active.";
+            string ownership = status.Managed > 0 ? "Removable Windows Firewall rules are active." : "Compatible external block rules are active.";
             return new(id, title, $"{status.Blocked}/{status.Existing} detected executables blocked. {ownership}", CheckStatus.Ready,
-                status.Managed > 0 ? (category == "ubisoft" ? "Uninstall" : "Remove") : null,
-                status.Managed > 0 ? $"remove-{actionPrefix}-firewall" : null);
+                "Uninstall", $"remove-{actionPrefix}-firewall");
         }
-        return new(id, title, $"{status.Blocked}/{status.Existing} detected executables blocked. This offline-isolation measure is recommended but optional.", CheckStatus.Warning, "Install", $"install-{actionPrefix}-firewall");
+        return new(id, title, $"{status.Blocked}/{status.Existing} detected executables blocked. This outbound firewall block is recommended but optional.", CheckStatus.Warning, "Install", $"install-{actionPrefix}-firewall");
     }
 
     private static LauncherCheck BuildBackupCheck(GameInstallation? installation)
@@ -415,14 +449,13 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         return "All exact original movement and ADS instructions were verified.";
     }
 
-    private static bool SayNoToEacAppearsInstalled(string gameDirectory)
+    internal static bool SayNoToEacAppearsInstalled(string gameDirectory)
     {
         string eac = Path.Combine(gameDirectory, "EasyAntiCheat");
-        string x64 = Path.Combine(eac, "EasyAntiCheat_x64.dll"), x64Backup = x64 + ".BAK";
-        string x86 = Path.Combine(eac, "EasyAntiCheat_x86.dll"), x86Backup = x86 + ".BAK";
-        return Small(x64) && Small(x86) && Large(x64Backup) && Large(x86Backup);
+        string x64 = Path.Combine(eac, "EasyAntiCheat_x64.dll");
+        string x86 = Path.Combine(eac, "EasyAntiCheat_x86.dll");
+        return Small(x64) && Small(x86);
         static bool Small(string path) => File.Exists(path) && new FileInfo(path).Length is > 0 and < 65536;
-        static bool Large(string path) => File.Exists(path) && new FileInfo(path).Length > 262144;
     }
 
     private static string[] ActiveEacProcesses() => Process.GetProcesses()

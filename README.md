@@ -35,7 +35,7 @@ Do not use it in co-op, Ghost War, or any online session. Read the full [risk no
 - [Runtime, installation, and shutdown notes](release/README.md)
 - [License](LICENSE.txt)
 
-The repository includes the production launcher, supervised runtime, installer definition, release-building script, and the focused research utilities used to locate and validate Wildlands' movement values. Generated binaries, memory captures, debugger packages, screenshots, and test logs are intentionally excluded.
+The repository includes the production launcher, supervised runtime, portable release-building script, and the focused research utilities used to locate and validate Wildlands' movement values. Generated binaries, memory captures, debugger packages, screenshots, and test logs are intentionally excluded.
 
 ## Building from source
 

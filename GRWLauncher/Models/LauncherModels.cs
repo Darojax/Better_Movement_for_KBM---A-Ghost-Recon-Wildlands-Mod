@@ -3,6 +3,7 @@ namespace GRWBetterMovementLauncher.Models;
 public enum CheckStatus
 {
     Ready,
+    Inactive,
     Warning,
     Blocked
 }
@@ -21,6 +22,7 @@ public sealed record LauncherSnapshot(
     string GamePath,
     IReadOnlyList<LauncherCheck> Checks,
     bool GameRunning,
-    bool RuntimeActive);
+    bool RuntimeActive,
+    bool RuntimeDetected);
 
 public sealed record LauncherActionResult(string Message, bool ShouldLog = true);

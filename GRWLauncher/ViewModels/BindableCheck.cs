@@ -29,22 +29,42 @@ public sealed class BindableCheck : INotifyPropertyChanged
     public bool IsAnalyzing { get; private set; }
     public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel);
     public bool CanExecuteAction => !string.IsNullOrWhiteSpace(ActionId);
-    public string StatusGlyph => Status switch { CheckStatus.Ready => "✓", CheckStatus.Warning => "!", _ => "×" };
-    public string StatusLabel => IsAnalyzing ? "Analyzing" : Status switch { CheckStatus.Ready => "Ready", CheckStatus.Warning => "Caution", _ => "Blocked" };
+    public string StatusGlyph => Status switch
+    {
+        CheckStatus.Ready => "✓",
+        CheckStatus.Inactive => "–",
+        CheckStatus.Warning => "!",
+        _ => "×"
+    };
+    public string StatusLabel => IsAnalyzing ? "Analyzing" : Id == "hooks" && Status == CheckStatus.Inactive &&
+        Detail.StartsWith("Ghost Recon Wildlands is running", StringComparison.Ordinal)
+        ? "Mod not running" : Status switch
+    {
+        CheckStatus.Ready => "Ready",
+        CheckStatus.Inactive => "Game not running",
+        CheckStatus.Warning => "Caution",
+        _ => "Blocked"
+    };
     public Brush StatusBrush => Status switch
     {
         CheckStatus.Ready => new SolidColorBrush(Color.FromRgb(101, 201, 135)),
+        CheckStatus.Inactive => new SolidColorBrush(Color.FromRgb(126, 136, 126)),
         CheckStatus.Warning => new SolidColorBrush(Color.FromRgb(230, 184, 92)),
         _ => new SolidColorBrush(Color.FromRgb(228, 111, 103))
     };
 
     public void UpdateFrom(LauncherCheck source)
     {
+        bool wasRuntimeWaitingForMod = Id == "hooks" && Status == CheckStatus.Inactive &&
+            Detail.StartsWith("Ghost Recon Wildlands is running", StringComparison.Ordinal);
         Set(ref _title, source.Title, nameof(Title));
         Set(ref _detail, source.Detail, nameof(Detail));
         Set(ref _detailToolTip, source.DetailToolTip ?? source.Detail, nameof(DetailToolTip));
 
         bool statusChanged = Status != source.Status;
+        bool isRuntimeWaitingForMod = source.Id == "hooks" && source.Status == CheckStatus.Inactive &&
+            source.Detail.StartsWith("Ghost Recon Wildlands is running", StringComparison.Ordinal);
+        bool runtimeInactiveLabelChanged = wasRuntimeWaitingForMod != isRuntimeWaitingForMod;
         Status = source.Status;
         if (statusChanged)
         {
@@ -60,7 +80,7 @@ public sealed class BindableCheck : INotifyPropertyChanged
             Notify(nameof(IsAnalyzing));
             Notify(nameof(StatusLabel));
         }
-        else if (statusChanged)
+        else if (statusChanged || runtimeInactiveLabelChanged)
         {
             Notify(nameof(StatusLabel));
         }

@@ -16,6 +16,7 @@ The launcher's Save backup management panel is not working properly yet and must
 - Test adding and removing multiple custom roots, including overlapping folders, junctions, unavailable paths, multiple Ubisoft accounts, and similarly named sources.
 - Confirm every source is written to a separate destination and that no save or previous backup can be overwritten, merged, moved, restored, or deleted unintentionally.
 - Test panel controls, status messages, live refresh behavior, long paths, failed or interrupted copies, and backup attempts while Ghost Recon Wildlands is running.
+- Keep restoration deliberately manual. The launcher may create timestamped backups and open exact live/backup folders, but must not offer an automated restore action that could replace newer progress through a mistaken click.
 - Continue making independent manual save backups until this feature has passed end-to-end validation.
 
 ## Implemented gameplay contract
@@ -99,10 +100,10 @@ Do not add input-based weapon tracking. Testing showed it can desynchronize thro
 ## Priority 3 — Release preparation
 
 - Choose a release version only after extended regression passes.
-- Perform clean-machine tests for both portable and installer packages.
-- Test standard and strict firewall modes and verify uninstall removes only rules prefixed `GRW Movement Mod - `.
+- Perform clean-machine tests for the portable package.
+- Test standard and strict firewall modes and verify **Remove launcher data…** removes only rules managed by Better Movement for KBM.
 - Verify the exact-instruction refusal path against an unsupported or deliberately mismatched build.
-- Rebuild portable, installer, and source packages from the final commit.
+- Rebuild portable and source packages from the final commit.
 - Regenerate and independently verify SHA-256 manifests.
 - Review antivirus behavior and consider Authenticode signing.
 - Prepare the Nexus description, installation guide, safety warning, known issues, changelog, screenshots/video, and support policy.

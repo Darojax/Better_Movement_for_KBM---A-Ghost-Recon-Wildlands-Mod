@@ -430,14 +430,14 @@ try
     uint helperThreadId = GetCurrentThreadId();
     LowLevelMouseProc mouseProc = (code, wParam, lParam) =>
     {
-        if (code >= 0 && unchecked((uint)wParam.ToInt64()) == WmMouseWheel && IsGameForeground() && IsMoving())
+        if (code >= 0 && unchecked((uint)wParam.ToInt64()) == WmMouseWheel && IsGameForeground())
         {
             uint mouseData = unchecked((uint)Marshal.ReadInt32(lParam, 8));
             short delta = unchecked((short)(mouseData >> 16));
             if (delta != 0)
             {
-                PostThreadMessage(helperThreadId, WmSpeedWheel, delta > 0 ? 1U : 0U, 0);
-                return 1; // consume the wheel event so the game cannot also act on it
+                if (IsMoving()) PostThreadMessage(helperThreadId, WmSpeedWheel, delta > 0 ? 1U : 0U, 0);
+                return 1; // reserve the wheel for the mod while Ghost Recon Wildlands has focus
             }
         }
         return CallNextHookEx(0, code, wParam, lParam);

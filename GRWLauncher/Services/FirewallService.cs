@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text;
 
 namespace GRWBetterMovementLauncher.Services;
 
@@ -10,6 +12,7 @@ internal static class FirewallService
 {
     private const string RulePrefix = "Better Movement for KBM - ";
     private const string LegacyUbisoftRulePrefix = "GRW Isolation - Ubisoft";
+    private const string LegacyProjectRulePrefix = "GRW Movement Mod - ";
 
     public static string[] GamePrograms(string gameDirectory) =>
     [
@@ -86,11 +89,23 @@ internal static class FirewallService
             case "remove-game":
                 RemoveManagedRules("Game - ");
                 return 0;
+            case "remove-game-blocks":
+                if (gameDirectory is null) return 2;
+                RemoveBlockingRulesForPrograms(GamePrograms(gameDirectory));
+                return 0;
             case "install-ubisoft":
                 ReplaceManagedRules("Ubisoft - ", UbisoftPrograms());
                 return 0;
             case "remove-ubisoft":
                 RemoveManagedRules("Ubisoft - ");
+                return 0;
+            case "remove-ubisoft-blocks":
+                RemoveBlockingRulesForPrograms(UbisoftPrograms());
+                return 0;
+            case "remove-all":
+                RemoveManagedRules("Game - ");
+                RemoveManagedRules("Ubisoft - ");
+                RemoveRulesWithPrefix(LegacyProjectRulePrefix);
                 return 0;
             default:
                 return 2;
@@ -99,12 +114,17 @@ internal static class FirewallService
 
     private static void ReplaceManagedRules(string category, IEnumerable<string> programs)
     {
-        RemoveManagedRules(category);
+        string[] existingPrograms = programs.Where(File.Exists).Select(Path.GetFullPath).ToArray();
+        if (category == "Game - ")
+            RemoveManagedRulesForPrograms(existingPrograms);
+        else
+            RemoveManagedRules(category);
+
         dynamic policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!)!;
-        foreach (string program in programs.Where(File.Exists))
+        foreach (string program in existingPrograms)
         {
             dynamic rule = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FWRule")!)!;
-            rule.Name = RulePrefix + category + Path.GetFileName(program);
+            rule.Name = RulePrefix + category + Path.GetFileName(program) + " - " + PathToken(program);
             rule.Description = "Created by Better Movement for KBM";
             rule.ApplicationName = Path.GetFullPath(program);
             rule.Direction = 2;
@@ -130,6 +150,52 @@ internal static class FirewallService
         foreach (string name in names) policy.Rules.Remove(name);
     }
 
+    private static void RemoveManagedRulesForPrograms(IEnumerable<string> programs)
+    {
+        HashSet<string> targets = programs.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        dynamic policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!)!;
+        List<string> names = [];
+        foreach (dynamic rule in policy.Rules)
+        {
+            string name = (string)rule.Name;
+            string? application = rule.ApplicationName as string;
+            if (!name.StartsWith(RulePrefix + "Game - ", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(application)) continue;
+            string full;
+            try { full = Path.GetFullPath(application); } catch { continue; }
+            if (targets.Contains(full)) names.Add(name);
+        }
+        foreach (string name in names.Distinct(StringComparer.OrdinalIgnoreCase)) policy.Rules.Remove(name);
+    }
+
+    private static void RemoveRulesWithPrefix(string prefix)
+    {
+        dynamic policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!)!;
+        List<string> names = [];
+        foreach (dynamic rule in policy.Rules)
+        {
+            string name = (string)rule.Name;
+            if (name.StartsWith(prefix, StringComparison.Ordinal)) names.Add(name);
+        }
+        foreach (string name in names) policy.Rules.Remove(name);
+    }
+
+    private static void RemoveBlockingRulesForPrograms(IEnumerable<string> programs)
+    {
+        HashSet<string> targets = programs.Where(File.Exists).Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        dynamic policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!)!;
+        List<string> names = [];
+        foreach (dynamic rule in policy.Rules)
+        {
+            string? application = rule.ApplicationName as string;
+            if (!(bool)rule.Enabled || (int)rule.Direction != 2 || (int)rule.Action != 0 || string.IsNullOrWhiteSpace(application)) continue;
+            string full;
+            try { full = Path.GetFullPath(application); } catch { continue; }
+            if (targets.Contains(full)) names.Add((string)rule.Name);
+        }
+        foreach (string name in names.Distinct(StringComparer.OrdinalIgnoreCase)) policy.Rules.Remove(name);
+    }
+
     private static bool IsAdministrator() => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+    private static string PathToken(string path) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(path).ToUpperInvariant())))[..12];
     private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
 }

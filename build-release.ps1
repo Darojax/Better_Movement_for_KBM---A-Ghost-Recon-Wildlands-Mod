@@ -35,7 +35,7 @@ $zip = Join-Path $artifactRoot "GRW-Analogue-Movement-Mod-$Version-Portable.zip"
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
 Compress-Archive -LiteralPath $portableRoot -DestinationPath $zip -CompressionLevel Optimal
 
-foreach ($relative in @("GRWSpeedHookPrototype\Program.cs", "GRWSpeedHookPrototype\GRWSpeedHookPrototype.csproj", "GRWMovementRuntime\GRWMovementRuntime.csproj", "GRWLauncher", "installer\GRWAnalogueMovement.iss", "release\README.md", "release\DISCLAIMER.txt", "release\LICENSE.txt", "build-release.ps1")) {
+foreach ($relative in @("GRWSpeedHookPrototype\Program.cs", "GRWSpeedHookPrototype\GRWSpeedHookPrototype.csproj", "GRWMovementRuntime\GRWMovementRuntime.csproj", "GRWLauncher", "release\README.md", "release\DISCLAIMER.txt", "release\LICENSE.txt", "build-release.ps1")) {
     $source = Join-Path $workspace $relative
     $destination = Join-Path $sourceRoot $relative
     if (Test-Path -LiteralPath $source -PathType Container) {
@@ -54,17 +54,8 @@ $sourceZip = Join-Path $artifactRoot "GRW-Analogue-Movement-Mod-$Version-Source.
 if (Test-Path -LiteralPath $sourceZip) { Remove-Item -LiteralPath $sourceZip -Force }
 Compress-Archive -LiteralPath $sourceRoot -DestinationPath $sourceZip -CompressionLevel Optimal
 
-$isccCommand = Get-Command iscc.exe -ErrorAction SilentlyContinue
-$isccPath = if ($isccCommand) { $isccCommand.Source } else { Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe" }
-if (Test-Path -LiteralPath $isccPath) {
-    & $isccPath (Join-Path $workspace "installer\GRWAnalogueMovement.iss")
-    if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
-} else {
-    Write-Warning "Inno Setup compiler not found; portable package built and installer definition retained."
-}
-
 $releaseHashFile = Join-Path $artifactRoot "RELEASE-SHA256SUMS.txt"
-$releaseFiles = @(Get-ChildItem -LiteralPath $artifactRoot -File) + @(Get-ChildItem -LiteralPath (Join-Path $artifactRoot "installer") -File -ErrorAction SilentlyContinue)
+$releaseFiles = @(Get-ChildItem -LiteralPath $artifactRoot -File)
 $releaseFiles | Where-Object { $_.Name -match '\.(zip|exe)$' } | Sort-Object Name | ForEach-Object {
     $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $($_.Name)"

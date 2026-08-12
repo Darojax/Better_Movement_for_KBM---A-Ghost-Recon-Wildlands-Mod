@@ -40,7 +40,7 @@ SayNoToEAC is not included and this project does not install or modify it.
 
 1. Back up your saves.
 2. Install SayNoToEAC using its original author's instructions.
-3. Run `GRWBetterMovementLauncher.exe`.
+3. Run `Better Movement for KBM - GRW.exe`.
 4. Review the live checklist. Red items block only mod attachment; cautions such as firewall isolation and save backup remain optional.
 5. Optionally install the separate Wildlands and Ubisoft Connect firewall blocks from the launcher.
 6. Click **Launch with Better Movement for KBM** and complete the one-time risk acknowledgement.
@@ -92,11 +92,11 @@ The launcher's **Save backup** status follows the selected installation and ever
 
 Process-memory modification and firewall management can trigger security-product warnings. The project should be downloaded only from its official Nexus/GitHub release, checked against published SHA-256 hashes, and built from source when possible.
 
-## Uninstallation
+## Portable removal
 
-- Remove any launcher-managed firewall rules from the launcher before uninstalling or deleting it.
-- The launcher removes only rules prefixed `Better Movement for KBM - ` and leaves rules created by other tools untouched.
-- SayNoToEAC must be removed separately using its original instructions.
+Use **Remove launcher data…** before deleting the portable folder. After one confirmation, it removes backups created by Better Movement for KBM, its local settings and records, and its managed Ghost Recon Wildlands and Ubisoft Connect firewall rules. It leaves normal game saves, SayNoToEAC files, renamed EAC files, and firewall rules created by other tools untouched. The action is unavailable while the movement runtime is running.
+
+SayNoToEAC must be removed separately using its original instructions if the user no longer wants it.
 
 ## Support boundaries
 
