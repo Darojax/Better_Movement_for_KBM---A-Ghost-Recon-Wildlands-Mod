@@ -31,6 +31,12 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
     private Process? _runtimeProcess;
     private EventWaitHandle? _shutdownEvent;
     private string _runtimeFailure = "";
+    private volatile bool _runtimeStarting;
+    private SaveBackupSummary? _backupSummary;
+    private string? _backupSummaryInstallation;
+    private DateTime _backupSummaryCheckedAt;
+    private bool? _lastObservedGameRunning;
+    private DateTime? _gameStoppedAtUtc;
 
     public bool RiskAcceptanceRequired => !File.Exists(AcceptanceFile);
 
@@ -40,13 +46,12 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         try
         {
             RefreshInstallationIfNeeded();
-            bool gameRunning = Process.GetProcessesByName("GRW").Length > 0;
-            if (_runtimeProcess is { HasExited: true }) DisposeRuntimeHandles();
+            ProcessState processes = CaptureProcessState();
+            bool gameRunning = processes.GameRunning;
+            TrackGameRunningState(gameRunning);
+            if (!_runtimeStarting && _runtimeProcess is { HasExited: true }) DisposeRuntimeHandles();
             bool runtimeActive = _runtimeProcess is { HasExited: false };
-            bool foreignRuntime = Process.GetProcessesByName("GRWAnalogueMovement").Any(process =>
-            {
-                using (process) return _runtimeProcess is null || process.Id != _runtimeProcess.Id;
-            });
+            bool foreignRuntime = processes.RuntimeProcessIds.Any(id => _runtimeProcess is null || id != _runtimeProcess.Id);
 
             List<LauncherCheck> checks = [];
             if (_installation is null)
@@ -62,7 +67,7 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
                 checks.Add(BuildSayNoToEacCheck(_installation.Directory));
             }
 
-            string[] eacProcesses = ActiveEacProcesses();
+            string[] eacProcesses = processes.EacProcesses;
             checks.Add(eacProcesses.Length == 0
                 ? gameRunning
                     ? new("eac", "Easy Anti-Cheat", "No active Easy Anti-Cheat process detected.", CheckStatus.Ready)
@@ -74,14 +79,14 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
             checks.Add(BuildFirewallCheck("ubisoft-firewall", "Ubisoft Connect Windows Firewall block", _ubisoftFirewall, "ubisoft"));
 
             checks.Add(foreignRuntime
-                ? new("hooks", "Mod runtime hook", "Another movement runtime is already running. Press F5 in that runtime before starting a new one.", CheckStatus.Blocked)
+                ? new("hooks", "Mod runtime hook", "Another movement runtime is already running. Close Ghost Recon Wildlands before starting a new session.", CheckStatus.Blocked)
                 : runtimeActive
                     ? new("hooks", "Mod runtime hook", "Attached and Active.", CheckStatus.Ready)
                     : gameRunning
                         ? new("hooks", "Mod runtime hook", "Ghost Recon Wildlands is running without the mod.", CheckStatus.Inactive, "Verify", "verify-hooks")
                         : new("hooks", "Mod runtime hook", "Ghost Recon Wildlands is not running.", CheckStatus.Inactive));
 
-            checks.Add(BuildBackupCheck(_installation));
+            checks.Add(BuildBackupCheck(_installation, gameRunning));
             string storefront = _installation?.Storefront ?? "Not detected";
             string path = _installation?.Directory ?? "Choose the folder containing GRW.exe";
             return new LauncherSnapshot(storefront, path, checks, gameRunning, runtimeActive, runtimeActive || foreignRuntime);
@@ -169,14 +174,18 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
 
         while (true)
         {
+            int? gameProcessId;
             if (launchedGame)
             {
                 progress.Report("Waiting for a stable GRW.exe process…");
-                await WaitForStableGameAsync(startupDeadline, cancellationToken);
+                gameProcessId = await WaitForStableGameAsync(_installation!.Executable, startupDeadline, cancellationToken);
             }
+            else gameProcessId = FindSelectedGameProcessId(_installation!.Executable);
             try
             {
-                await StartRuntimeAsync(progress, cancellationToken);
+                if (gameProcessId is null)
+                    throw new InvalidOperationException("The selected Ghost Recon Wildlands installation is not running.");
+                await StartRuntimeAsync(progress, gameProcessId.Value, cancellationToken);
                 return;
             }
             catch (RuntimeStartupInterruptedException) when (launchedGame && DateTime.UtcNow < startupDeadline)
@@ -201,8 +210,10 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
 
     public async Task AttachAsync(IProgress<string> progress, CancellationToken cancellationToken = default)
     {
-        if (Process.GetProcessesByName("GRW").Length == 0) throw new InvalidOperationException("Ghost Recon Wildlands is not running.");
-        await StartRuntimeAsync(progress, cancellationToken);
+        EnsureInstallation();
+        int? gameProcessId = FindSelectedGameProcessId(_installation!.Executable);
+        if (gameProcessId is null) throw new InvalidOperationException("The selected Ghost Recon Wildlands installation is not running.");
+        await StartRuntimeAsync(progress, gameProcessId.Value, cancellationToken);
     }
 
     public async Task StopRuntimeAsync(IProgress<string> progress, CancellationToken cancellationToken = default)
@@ -221,7 +232,7 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         try { await _runtimeProcess.WaitForExitAsync(timeout.Token); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException("The runtime did not confirm restoration. Press F5 while its process is active before closing Ghost Recon Wildlands.");
+            throw new TimeoutException("The runtime did not confirm restoration. Close Ghost Recon Wildlands before continuing.");
         }
         finally
         {
@@ -236,7 +247,7 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         File.WriteAllText(AcceptanceFile, DateTimeOffset.UtcNow.ToString("O"));
     }
 
-    private async Task StartRuntimeAsync(IProgress<string> progress, CancellationToken cancellationToken)
+    private async Task StartRuntimeAsync(IProgress<string> progress, int gameProcessId, CancellationToken cancellationToken)
     {
         if (_runtimeProcess is { HasExited: false }) throw new InvalidOperationException("Better Movement for KBM is already active.");
         if (ActiveEacProcesses().Length > 0) throw new InvalidOperationException("Easy Anti-Cheat is active. The mod will not attach.");
@@ -254,24 +265,63 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            Arguments = $"--shutdown-event={Quote(eventName)}"
+            Arguments = $"--pid={gameProcessId} --shutdown-event={Quote(eventName)}"
         };
-        _runtimeProcess = new Process { StartInfo = start, EnableRaisingEvents = true };
-        _runtimeProcess.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data) && e.Data.Contains("Verified movement", StringComparison.OrdinalIgnoreCase)) progress.Report("Movement runtime attached successfully."); };
-        _runtimeProcess.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) _runtimeFailure = e.Data; };
-        if (!_runtimeProcess.Start()) throw new InvalidOperationException("Could not start the movement runtime.");
-        _runtimeProcess.BeginOutputReadLine();
-        _runtimeProcess.BeginErrorReadLine();
-        await Task.Delay(3000, cancellationToken);
-        if (_runtimeProcess.HasExited)
+        Process runtimeProcess = new() { StartInfo = start, EnableRaisingEvents = true };
+        bool runtimeStarted = false;
+        _runtimeProcess = runtimeProcess;
+        _runtimeStarting = true;
+        try
         {
-            int exitCode = _runtimeProcess.ExitCode;
-            string failure = string.IsNullOrWhiteSpace(_runtimeFailure) ? $"Runtime exited with code {exitCode}." : _runtimeFailure;
-            DisposeRuntimeHandles();
-            if (exitCode == 0) throw new RuntimeStartupInterruptedException();
-            throw new InvalidOperationException(failure);
+            runtimeProcess.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data) && e.Data.Contains("Verified movement", StringComparison.OrdinalIgnoreCase)) progress.Report("Movement runtime attached successfully."); };
+            runtimeProcess.ErrorDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    _runtimeFailure = string.IsNullOrWhiteSpace(_runtimeFailure) ? e.Data : $"{_runtimeFailure}{Environment.NewLine}{e.Data}";
+            };
+            if (!runtimeProcess.Start()) throw new InvalidOperationException("Could not start the movement runtime.");
+            runtimeStarted = true;
+            runtimeProcess.BeginOutputReadLine();
+            runtimeProcess.BeginErrorReadLine();
+            await Task.Delay(3000, cancellationToken);
+            if (runtimeProcess.HasExited)
+            {
+                int exitCode = runtimeProcess.ExitCode;
+                string failure = string.IsNullOrWhiteSpace(_runtimeFailure)
+                    ? $"Runtime exited with code {exitCode}."
+                    : _runtimeFailure.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
+                        .FirstOrDefault(line => !line.TrimStart().StartsWith("at ", StringComparison.Ordinal)) ?? _runtimeFailure;
+                DisposeRuntimeHandles();
+                if (exitCode == 0) throw new RuntimeStartupInterruptedException();
+                throw new InvalidOperationException(failure);
+            }
+            progress.Report("Better Movement for KBM is active.");
         }
-        progress.Report("Better Movement for KBM is active.");
+        catch (OperationCanceledException)
+        {
+            if (runtimeStarted && !runtimeProcess.HasExited)
+            {
+                _shutdownEvent?.Set();
+                using CancellationTokenSource restorationTimeout = new(TimeSpan.FromSeconds(8));
+                try { await runtimeProcess.WaitForExitAsync(restorationTimeout.Token); }
+                catch (OperationCanceledException)
+                {
+                    throw new TimeoutException("The cancelled runtime did not confirm restoration. Exit Ghost Recon Wildlands before continuing.");
+                }
+            }
+            if (ReferenceEquals(_runtimeProcess, runtimeProcess)) DisposeRuntimeHandles();
+            throw;
+        }
+        catch
+        {
+            if (ReferenceEquals(_runtimeProcess, runtimeProcess) && (!runtimeStarted || runtimeProcess.HasExited))
+                DisposeRuntimeHandles();
+            throw;
+        }
+        finally
+        {
+            _runtimeStarting = false;
+        }
     }
 
     private static void LaunchGame(GameInstallation installation)
@@ -282,7 +332,7 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
     }
 
-    private static async Task WaitForStableGameAsync(DateTime deadlineUtc, CancellationToken cancellationToken)
+    private static async Task<int> WaitForStableGameAsync(string selectedExecutable, DateTime deadlineUtc, CancellationToken cancellationToken)
     {
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         TimeSpan remaining = deadlineUtc - DateTime.UtcNow;
@@ -291,11 +341,17 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         try
         {
             DateTime? continuouslyRunningSince = null;
+            int? stableProcessId = null;
             while (true)
             {
-                bool running = Process.GetProcessesByName("GRW").Length > 0;
-                continuouslyRunningSince = running ? continuouslyRunningSince ?? DateTime.UtcNow : null;
-                if (continuouslyRunningSince is not null && DateTime.UtcNow - continuouslyRunningSince >= TimeSpan.FromSeconds(4)) return;
+                int? processId = FindSelectedGameProcessId(selectedExecutable);
+                if (processId != stableProcessId)
+                {
+                    stableProcessId = processId;
+                    continuouslyRunningSince = processId is null ? null : DateTime.UtcNow;
+                }
+                if (stableProcessId is not null && continuouslyRunningSince is not null &&
+                    DateTime.UtcNow - continuouslyRunningSince >= TimeSpan.FromSeconds(4)) return stableProcessId.Value;
                 await Task.Delay(500, timeout.Token);
             }
         }
@@ -303,6 +359,31 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         {
             throw new TimeoutException("Ghost Recon Wildlands did not start within four minutes.");
         }
+    }
+
+    private static int? FindSelectedGameProcessId(string selectedExecutable)
+    {
+        string expectedPath = Path.GetFullPath(selectedExecutable);
+        List<(int Id, DateTime Started)> matches = [];
+        List<(int Id, DateTime Started)> all = [];
+        foreach (Process process in Process.GetProcessesByName("GRW"))
+        {
+            using (process)
+            {
+                try
+                {
+                    DateTime started = process.StartTime;
+                    all.Add((process.Id, started));
+                    string? actualPath = process.MainModule?.FileName;
+                    if (actualPath is not null && Path.GetFullPath(actualPath).Equals(expectedPath, StringComparison.OrdinalIgnoreCase))
+                        matches.Add((process.Id, started));
+                }
+                catch { }
+            }
+        }
+
+        if (matches.Count > 0) return matches.MaxBy(candidate => candidate.Started).Id;
+        return all.Count == 1 ? all[0].Id : null;
     }
 
     private sealed class RuntimeStartupInterruptedException : Exception { }
@@ -357,13 +438,52 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         return new(id, title, $"{status.Blocked}/{status.Existing} detected executables blocked. This outbound firewall block is recommended but optional.", CheckStatus.Warning, "Install", $"install-{actionPrefix}-firewall");
     }
 
-    private static LauncherCheck BuildBackupCheck(GameInstallation? installation)
+    private LauncherCheck BuildBackupCheck(GameInstallation? installation, bool gameRunning)
     {
         if (installation is null)
             return new("backup", "Save backup", "Select a game installation to identify its save data.", CheckStatus.Warning);
-        SaveBackupSummary summary = SaveBackupService.GetSummary(installation);
+
+        if (gameRunning)
+        {
+            return new("backup", "Save backup", "Backup status will be checked when Ghost Recon Wildlands closes.", CheckStatus.Inactive,
+                "Manage", "manage-saves", "Backups cannot be created while Ghost Recon Wildlands is running.");
+        }
+
+        if (_gameStoppedAtUtc is DateTime stoppedAt && DateTime.UtcNow - stoppedAt < TimeSpan.FromSeconds(2))
+        {
+            return new("backup", "Save backup", "Waiting for final save writes before checking backup status.", CheckStatus.Inactive,
+                "Manage", "manage-saves");
+        }
+
+        _gameStoppedAtUtc = null;
+        string installationKey = $"{installation.Storefront}|{installation.Directory}";
+        if (_backupSummary is null || !_backupSummaryInstallation!.Equals(installationKey, StringComparison.OrdinalIgnoreCase)
+            || DateTime.UtcNow - _backupSummaryCheckedAt >= TimeSpan.FromSeconds(5))
+        {
+            _backupSummary = SaveBackupService.GetSummary(installation);
+            _backupSummaryInstallation = installationKey;
+            _backupSummaryCheckedAt = DateTime.UtcNow;
+        }
+        SaveBackupSummary summary = _backupSummary;
         return new("backup", "Save backup", summary.Detail, summary.IsReady ? CheckStatus.Ready : CheckStatus.Warning,
             "Manage", "manage-saves", summary.ToolTip);
+    }
+
+    private void TrackGameRunningState(bool gameRunning)
+    {
+        if (_lastObservedGameRunning == gameRunning) return;
+
+        if (_lastObservedGameRunning == true && !gameRunning)
+        {
+            _gameStoppedAtUtc = DateTime.UtcNow;
+            InvalidateBackupSummary();
+        }
+        else if (gameRunning)
+        {
+            _gameStoppedAtUtc = null;
+        }
+
+        _lastObservedGameRunning = gameRunning;
     }
 
     private void RefreshInstallationIfNeeded()
@@ -438,9 +558,11 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
 
     private async Task<string> VerifyHooksAsync(CancellationToken cancellationToken)
     {
-        if (Process.GetProcessesByName("GRW").Length == 0) return "Ghost Recon Wildlands is not running; exact hook instructions will be verified at attachment.";
+        EnsureInstallation();
+        int? gameProcessId = FindSelectedGameProcessId(_installation!.Executable);
+        if (gameProcessId is null) return "Ghost Recon Wildlands is not running; exact hook instructions will be verified at attachment.";
         string runtime = ResolveRuntimeExecutable();
-        ProcessStartInfo start = new(runtime, "--verify") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        ProcessStartInfo start = new(runtime, $"--pid={gameProcessId.Value} --verify") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the verifier.");
         string output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         string error = await process.StandardError.ReadToEndAsync(cancellationToken);
@@ -458,9 +580,28 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         static bool Small(string path) => File.Exists(path) && new FileInfo(path).Length is > 0 and < 65536;
     }
 
-    private static string[] ActiveEacProcesses() => Process.GetProcesses()
-        .Where(process => process.ProcessName.Contains("easyanticheat", StringComparison.OrdinalIgnoreCase) || process.ProcessName.Equals("eac", StringComparison.OrdinalIgnoreCase))
-        .Select(process => process.ProcessName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    private static string[] ActiveEacProcesses() => CaptureProcessState().EacProcesses;
+
+    private static ProcessState CaptureProcessState()
+    {
+        bool gameRunning = false;
+        List<int> runtimeIds = [];
+        HashSet<string> eacProcesses = new(StringComparer.OrdinalIgnoreCase);
+        foreach (Process process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                string name;
+                try { name = process.ProcessName; }
+                catch { continue; }
+                if (name.Equals("GRW", StringComparison.OrdinalIgnoreCase)) gameRunning = true;
+                if (name.Equals("GRWAnalogueMovement", StringComparison.OrdinalIgnoreCase)) runtimeIds.Add(process.Id);
+                if (name.Contains("easyanticheat", StringComparison.OrdinalIgnoreCase) || name.Equals("eac", StringComparison.OrdinalIgnoreCase))
+                    eacProcesses.Add(name);
+            }
+        }
+        return new ProcessState(gameRunning, runtimeIds.ToArray(), eacProcesses.ToArray());
+    }
 
     private void RunFirewall(string operation, string? gameDirectory = null)
     {
@@ -495,6 +636,14 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         _executableHash = null;
         _hashTask = null;
         _hashTaskPath = null;
+        InvalidateBackupSummary();
+    }
+
+    public void InvalidateBackupSummary()
+    {
+        _backupSummary = null;
+        _backupSummaryInstallation = null;
+        _backupSummaryCheckedAt = DateTime.MinValue;
     }
 
     private void DisposeRuntimeHandles()
@@ -506,6 +655,8 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
     }
 
     private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
+
+    private sealed record ProcessState(bool GameRunning, int[] RuntimeProcessIds, string[] EacProcesses);
 
     public void Dispose()
     {

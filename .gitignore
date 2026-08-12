@@ -19,6 +19,7 @@
 *.png
 !assets/images/nomad_1.png
 !assets/images/nomad_2.png
+!assets/images/better_movement_for_kbm_logo_small_and_trimmed.png
 **/scanner-results/
 **/weapon-probe-captures/
 **/captures/

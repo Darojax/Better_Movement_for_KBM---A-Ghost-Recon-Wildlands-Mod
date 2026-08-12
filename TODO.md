@@ -1,16 +1,16 @@
-# GRW Analogue Movement Mod — TODO
+# Better Movement for KBM — TODO
 
 ## Current status
 
-**Development preview — not ready for public distribution.**
+**Release candidate — not yet approved for public distribution.**
 
 The core movement model is implemented and passed its initial in-game validation on 2026-08-11. The next phase is extended play-testing, runtime polish, and release validation rather than further redesign.
 
-## Known issue â€” Save backup panel is not ready
+## Release validation — Save backup panel
 
-The launcher's Save backup management panel is not working properly yet and must not be considered release-ready or relied upon as the only save-protection method.
+The Save backup system is implemented and behaving correctly in current local testing, but it must pass the following release validation before it is relied upon as the only save-protection method.
 
-- Reproduce and diagnose the current panel failure before making further design changes.
+- Re-run the complete backup workflow from a clean launcher state before approving the first release.
 - Verify automatic detection and edition switching for Steam (`3559`) and Ubisoft Connect (`1771` and legacy `4740`).
 - Verify legacy-backup recognition, per-source freshness reporting, and persistence across launcher restarts.
 - Test adding and removing multiple custom roots, including overlapping folders, junctions, unavailable paths, multiple Ubisoft accounts, and similarly named sources.
@@ -31,7 +31,7 @@ Keep these points as the regression baseline:
 - Physical `X` jumps from any walking-range position to vanilla full jog, or from any jogging-range position to vanilla walk.
 - Releasing Sprint/Shift returns to vanilla full jog.
 - The helper normalizes each HIP target against Wildlands' detected native gait, so the complete range remains available from both walk and jog mode.
-- `F5` restores every patched instruction and exits.
+- The launcher's adaptive primary action restores every patched instruction and stops the runtime.
 - `--verbose` provides live level, target, multiplier, native-gait, and stance diagnostics.
 
 ## Implemented ADS and crouch model
@@ -86,9 +86,9 @@ Do not add input-based weapon tracking. Testing showed it can desynchronize thro
   - Treat firewall isolation as optional: active is green and inactive is amber, never launch-blocking.
   - Install and remove only firewall rules managed by this project, using elevation only for the requested action.
   - Detect SayNoToEAC, link to the original source and instructions, and independently block attachment whenever EAC is active or loaded.
-  - Launch through the detected storefront, wait for `GRW.exe`, attach automatically, and minimize to the taskbar while active.
+  - Launch through the detected storefront, wait for the selected installation's `GRW.exe`, and attach automatically without activating, minimizing, or covering the game window.
   - Keep vanilla launch available even when a red condition blocks mod attachment.
-  - Restore hooks when `F5` is pressed, the launcher closes, or the game exits.
+  - Restore hooks when the adaptive primary action disables the mod, the launcher closes, or the game exits.
   - Poll volatile state such as GRW/EAC processes and runtime health every second; cache executable hashing, installation discovery, firewall enumeration, and other comparatively expensive checks on a slower cadence.
 - Implement launcher/runtime supervision through a local named pipe or similarly narrow IPC boundary.
 - Improve startup synchronization and ignore wheel input until initial native gait and stance are trustworthy.

@@ -1,6 +1,6 @@
-# GRW Analogue Movement Mod
+# Better Movement for KBM — A Ghost Recon Wildlands Mod
 
-> **Development preview — not ready for distribution.** Gameplay behavior is undergoing extended play-testing. See [`TODO.md`](../TODO.md) in the source project.
+> **Release candidate.** Use only a package published through the official GitHub release or Nexus page and verify its published SHA-256 hashes.
 
 Granular mouse-wheel movement control for the Windows version of **Tom Clancy's Ghost Recon Wildlands**.
 
@@ -22,7 +22,7 @@ Read [DISCLAIMER.txt](DISCLAIMER.txt) before use.
 - Scrolling while ADS still adjusts the unified HIP level restored on ADS release.
 - From a walking-range speed, `X` jumps to vanilla full jog. From a jogging-range speed, `X` jumps to vanilla walk. No separate custom gait speeds are saved.
 - Releasing Sprint/Shift returns movement to vanilla full jog.
-- `F5` restores original game instructions and exits the runtime.
+- The launcher's adaptive green button disables the runtime and restores the original game instructions.
 
 Small terrain-dependent speed changes on slopes are native Wildlands behavior. Wildlands also applies weapon-dependent movement differences after the mod's shared ADS coefficient; the current tuning has been validated with an LMG, assault rifle, and pistol rather than normalized per weapon class.
 
@@ -61,7 +61,7 @@ The standard mode blocks these Wildlands executables when present:
 ## Safe shutdown
 
 1. Pause the game.
-2. Click **Disable mod**, close the launcher and approve restoration, or press `F5`.
+2. Use the adaptive green button to disable Better Movement for KBM, or close the launcher and approve restoration.
 3. Wait until the launcher reports that Better Movement is disabled.
 4. Exit Wildlands, then reconnect or remove firewall isolation.
 

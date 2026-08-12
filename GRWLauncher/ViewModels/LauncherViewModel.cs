@@ -17,6 +17,8 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     private bool _runtimeActive;
     private bool _runtimeDetected;
     private bool _gameRunning;
+    private bool _launchPending;
+    private CancellationTokenSource? _launchCancellation;
     private string _headline = "Checking your installation…";
     private string _summary = "Please wait while the launcher evaluates the local environment.";
     private string _storefront = "Detecting…";
@@ -29,10 +31,13 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     {
         _backend = backend;
         CheckActionCommand = new RelayCommand(item => _ = ExecuteCheckActionAsync((BindableCheck)item!), _ => !Busy);
-        LaunchCommand = new RelayCommand(_ => _ = StartWithModAsync(launchGame: !GameRunning), _ => CanLaunch && !Busy && !RuntimeActive);
-        LaunchVanillaCommand = new RelayCommand(_ => _ = LaunchVanillaAsync(), _ => !Busy && !RuntimeActive);
-        AttachCommand = new RelayCommand(_ => _ = StartWithModAsync(launchGame: false), _ => CanLaunch && GameRunning && !Busy && !RuntimeActive);
-        RestoreCommand = new RelayCommand(_ => _ = StopRuntimeAsync(), _ => RuntimeActive && !Busy);
+        LaunchCommand = new RelayCommand(_ =>
+        {
+            if (LaunchPending) CancelLaunchAttempt();
+            else if (RuntimeActive) _ = StopRuntimeAsync();
+            else _ = StartWithModAsync(launchGame: !GameRunning);
+        }, _ => LaunchPending || (RuntimeActive && !Busy) || (CanLaunch && !Busy));
+        LaunchVanillaCommand = new RelayCommand(_ => _ = LaunchVanillaAsync(), _ => !Busy && !RuntimeActive && !GameRunning);
         ClearLogCommand = new RelayCommand(_ => ActivityLog.Clear());
     }
 
@@ -44,13 +49,34 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CheckActionCommand { get; }
     public ICommand LaunchCommand { get; }
     public ICommand LaunchVanillaCommand { get; }
-    public ICommand AttachCommand { get; }
-    public ICommand RestoreCommand { get; }
     public ICommand ClearLogCommand { get; }
 
-    public bool Busy { get => _busy; private set { if (Set(ref _busy, value)) { RefreshCommands(); OnPropertyChanged(nameof(LaunchToolTip)); } } }
-    public bool RuntimeActive { get => _runtimeActive; private set { if (Set(ref _runtimeActive, value)) { RefreshCommands(); OnPropertyChanged(nameof(LaunchToolTip)); } } }
+    public bool Busy { get => _busy; private set { if (Set(ref _busy, value)) { RefreshCommands(); OnPropertyChanged(nameof(LaunchToolTip)); OnPropertyChanged(nameof(LaunchVanillaToolTip)); } } }
+    public bool RuntimeActive
+    {
+        get => _runtimeActive;
+        private set
+        {
+            if (!Set(ref _runtimeActive, value)) return;
+            RefreshCommands();
+            OnPropertyChanged(nameof(PrimaryActionLabel));
+            OnPropertyChanged(nameof(LaunchToolTip));
+            OnPropertyChanged(nameof(LaunchVanillaToolTip));
+        }
+    }
     public bool RuntimeDetected { get => _runtimeDetected; private set => Set(ref _runtimeDetected, value); }
+    public bool LaunchPending
+    {
+        get => _launchPending;
+        private set
+        {
+            if (!Set(ref _launchPending, value)) return;
+            RefreshCommands();
+            OnPropertyChanged(nameof(PrimaryActionLabel));
+            OnPropertyChanged(nameof(LaunchToolTip));
+            OnPropertyChanged(nameof(LaunchVanillaToolTip));
+        }
+    }
     public bool GameRunning
     {
         get => _gameRunning;
@@ -60,18 +86,24 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
             RefreshCommands();
             OnPropertyChanged(nameof(PrimaryActionLabel));
             OnPropertyChanged(nameof(LaunchToolTip));
+            OnPropertyChanged(nameof(LaunchVanillaToolTip));
         }
     }
     public bool CanLaunch => Checks.Count > 0 && Checks.All(item => item.Status != CheckStatus.Blocked);
-    public string PrimaryActionLabel => GameRunning
+    public string PrimaryActionLabel => LaunchPending
+        ? "Cancel launch attempt"
+        : RuntimeActive
+        ? "Disable Better Movement for KBM"
+        : GameRunning
         ? "Enable Better Movement for KBM"
         : "Launch with Better Movement for KBM";
     public string? LaunchToolTip
     {
         get
         {
+            if (LaunchPending) return "Stops waiting for Ghost Recon Wildlands and restores all launcher controls";
+            if (RuntimeActive) return "Disables the mod while Ghost Recon Wildlands remains running";
             if (Checks.Any(item => item.Status == CheckStatus.Blocked)) return "Mod cannot run due to a blocked item";
-            if (RuntimeActive) return "Better Movement for KBM is already running";
             if (Busy) return "Please wait for the current launcher action to finish";
             if (Checks.Count == 0) return "Safety and compatibility checks are still running";
             return GameRunning
@@ -79,6 +111,13 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
                 : "Launches the game together with the mod";
         }
     }
+    public string LaunchVanillaToolTip => GameRunning
+        ? "Ghost Recon Wildlands is already running"
+        : RuntimeActive
+            ? "Disable Better Movement for KBM before starting another game session"
+            : Busy
+                ? "Please wait for the current launcher action to finish"
+                : "Launches the game normally without introducing the mod";
     public string Headline { get => _headline; private set => Set(ref _headline, value); }
     public string Summary { get => _summary; private set => Set(ref _summary, value); }
     public string Storefront { get => _storefront; private set => Set(ref _storefront, value); }
@@ -88,6 +127,14 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     public Brush SummaryBrush { get => _summaryBrush; private set => Set(ref _summaryBrush, value); }
 
     public async Task InitializeAsync() => await RefreshAsync();
+
+    public async Task RefreshAfterSaveBackupAsync()
+    {
+        _backend.InvalidateBackupSummary();
+        while (_refreshInProgress)
+            await Task.Delay(25);
+        await RefreshAsync(recordInLog: false);
+    }
 
     public async Task RefreshAsync(bool recordInLog = true)
     {
@@ -161,17 +208,26 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
     {
         if (!CanLaunch || Busy) return;
         if (!ConfirmRiskIfRequired()) return;
+        using CancellationTokenSource cancellation = new();
+        _launchCancellation = cancellation;
+        LaunchPending = true;
         Busy = true;
-        if (!launchGame) AddLog("Enable in running game requested.");
+        if (!launchGame) AddLog("Enabling Better Movement for KBM in the running game.");
         try
         {
             Progress<string> progress = CreateProgress();
-            if (launchGame) await _backend.LaunchWithModAsync(progress);
-            else await _backend.AttachAsync(progress);
+            if (launchGame) await _backend.LaunchWithModAsync(progress, cancellation.Token);
+            else await _backend.AttachAsync(progress, cancellation.Token);
             RuntimeActive = true;
             RuntimeDetected = true;
             Headline = "Better Movement for KBM is active";
             Summary = "The launcher is supervising the runtime and will restore the original in-memory instructions when the mod stops.";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            Activity = "Launch attempt cancelled.";
+            AddLog("Launch attempt cancelled by the user.");
+            await RefreshAsync(recordInLog: false);
         }
         catch (Exception exception)
         {
@@ -181,8 +237,17 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
         }
         finally
         {
+            if (ReferenceEquals(_launchCancellation, cancellation)) _launchCancellation = null;
+            LaunchPending = false;
             Busy = false;
         }
+    }
+
+    private void CancelLaunchAttempt()
+    {
+        if (!LaunchPending || _launchCancellation is null || _launchCancellation.IsCancellationRequested) return;
+        Activity = "Cancelling launch attempt…";
+        _launchCancellation.Cancel();
     }
 
     private async Task LaunchVanillaAsync()
@@ -276,7 +341,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
         {
             SummaryBrush = new SolidColorBrush(Color.FromRgb(101, 201, 135));
             Headline = "Better Movement for KBM is active";
-            Summary = "The runtime is attached and active. Click the 'Disable in running game' button to restore vanilla behaviour.";
+            Summary = "The runtime is attached and active.";
             return;
         }
 
@@ -325,7 +390,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
 
     private void RefreshCommands()
     {
-        foreach (RelayCommand command in new[] { CheckActionCommand, LaunchCommand, LaunchVanillaCommand, AttachCommand, RestoreCommand }.OfType<RelayCommand>())
+        foreach (RelayCommand command in new[] { CheckActionCommand, LaunchCommand, LaunchVanillaCommand }.OfType<RelayCommand>())
             command.RaiseCanExecuteChanged();
     }
 
@@ -339,5 +404,9 @@ public sealed class LauncherViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
-    public void Dispose() => (_backend as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        _launchCancellation?.Cancel();
+        (_backend as IDisposable)?.Dispose();
+    }
 }

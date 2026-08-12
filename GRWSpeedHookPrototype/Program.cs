@@ -10,7 +10,7 @@ const long AdsOutputWriterRva = 0x29D7175;
 const uint ProcessVmOperation = 0x0008, ProcessVmRead = 0x0010, ProcessVmWrite = 0x0020, ProcessQueryInformation = 0x0400;
 const uint MemCommit = 0x1000, MemReserve = 0x2000, MemRelease = 0x8000;
 const uint PageReadWrite = 0x04, PageExecuteRead = 0x20, PageExecuteReadWrite = 0x40;
-const uint WmHotkey = 0x0312, VkF4 = 0x73, VkF5 = 0x74, VkF6 = 0x75, VkF7 = 0x76, VkF8 = 0x77;
+const uint WmHotkey = 0x0312, VkF4 = 0x73, VkF6 = 0x75, VkF7 = 0x76, VkF8 = 0x77;
 const int WhKeyboardLl = 13, WhMouseLl = 14;
 const uint WmMouseWheel = 0x020A, WmTimer = 0x0113;
 const uint WmSpeedWheel = 0x8001;
@@ -29,8 +29,26 @@ const float StandingJogAdsAtMinimum = 3.00f, StandingJogAdsAtMidpoint = 3.50f, S
 const float CrouchWalkAdsMinimum = 0.84f, CrouchWalkAdsMaximum = 1.68f;
 const float CrouchJogAds = 2.70f;
 
-using Process game = Process.GetProcessesByName("GRW").SingleOrDefault()
-    ?? throw new InvalidOperationException("Exactly one GRW process must be running.");
+string? processIdArgument = args.FirstOrDefault(argument => argument.StartsWith("--pid=", StringComparison.OrdinalIgnoreCase));
+Process? selectedGame = null;
+if (processIdArgument is not null)
+{
+    if (!int.TryParse(processIdArgument.AsSpan("--pid=".Length), out int requestedProcessId))
+        throw new InvalidOperationException("The requested GRW process ID is invalid.");
+    try { selectedGame = Process.GetProcessById(requestedProcessId); }
+    catch (ArgumentException) { return 0; }
+}
+else
+{
+    Process[] candidates = Process.GetProcessesByName("GRW");
+    if (candidates.Length != 1)
+    {
+        foreach (Process candidate in candidates) candidate.Dispose();
+        throw new InvalidOperationException("The target GRW process was not specified unambiguously.");
+    }
+    selectedGame = candidates[0];
+}
+using Process game = selectedGame;
 bool calibrationMode = args.Contains("--calibrate", StringComparer.OrdinalIgnoreCase);
 bool adsCalibrationMode = args.Contains("--ads-calibrate", StringComparer.OrdinalIgnoreCase);
 bool weaponAdsProbeMode = args.Contains("--weapon-ads-probe", StringComparer.OrdinalIgnoreCase);
@@ -66,7 +84,7 @@ if (args.Contains("--verify", StringComparer.OrdinalIgnoreCase))
     Console.WriteLine($"ADS     0x{adsSite:X16}: {Convert.ToHexString(currentAds)}");
     Console.WriteLine($"ADS out 0x{adsOutputWriterSite:X16}: {Convert.ToHexString(currentAdsOutputWriter)}");
     bool verified = currentControl.SequenceEqual(originalControl) && currentProbe.SequenceEqual(originalProbe) && currentAds.SequenceEqual(originalAds) && currentAdsOutputWriter.SequenceEqual(originalAdsOutputWriter);
-    Console.WriteLine(verified ? "All four exact original instructions verified." : "Bytes do not match; installation is unsafe.");
+    Console.WriteLine(verified ? "All four exact original instructions verified." : "Instructions do not match a supported build; no changes were made.");
     CloseHandle(process);
     return verified ? 0 : 3;
 }
@@ -88,7 +106,7 @@ if (args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
     return 0;
 }
 if (!currentControl.SequenceEqual(originalControl) || !currentProbe.SequenceEqual(originalProbe) || !currentAds.SequenceEqual(originalAds) || !currentAdsOutputWriter.SequenceEqual(originalAdsOutputWriter))
-    throw new InvalidOperationException("One or more hook sites are already modified; run with --restore first.");
+    throw new InvalidOperationException("One or more live instructions do not match the supported original build. Refusing to attach; no changes were made.");
 
 string gameExecutable = game.MainModule?.FileName ?? throw new InvalidOperationException("Could not resolve GRW.exe path.");
 string gameDirectory = Path.GetDirectoryName(gameExecutable) ?? throw new InvalidOperationException("Could not resolve the Wildlands directory.");
@@ -233,7 +251,7 @@ try
 
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; Restore(); Environment.Exit(0); };
     AppDomain.CurrentDomain.ProcessExit += (_, _) => Restore();
-    if (!RegisterHotKey(0, 1, 0, VkF4) || !RegisterHotKey(0, 2, 0, VkF5))
+    if (!RegisterHotKey(0, 1, 0, VkF4))
         throw new Win32Exception(Marshal.GetLastWin32Error(), "RegisterHotKey failed");
     if (calibrationMode && (!RegisterHotKey(0, 3, 0, VkF6) || !RegisterHotKey(0, 4, 0, VkF7)))
         throw new Win32Exception(Marshal.GetLastWin32Error(), "Calibration hotkey registration failed");
@@ -516,7 +534,7 @@ try
             : $"Unified ladder: {WalkLevelCount} walk positions from 0.05-0.60 and {JogLevelCount} jog positions from 0.70-1.00; the wheel crosses both ranges automatically.");
     Console.WriteLine("X jumps from the current range to the opposite vanilla gait; no separate custom profiles are saved.");
     Console.WriteLine("Shift bypasses scaling for sprint; release returns to vanilla full jog.");
-    Console.WriteLine("F4 resets the current range to its vanilla anchor; F5 restores original code and exits.");
+    Console.WriteLine("F4 resets the current range to its vanilla anchor.");
     if (weaponAdsProbeMode) Console.WriteLine("WEAPON ADS PROBE: while holding ADS and moving, F6 captures Stoner and F7 captures pistol.");
     while (GetMessage(out Msg message, 0, 0, 0) > 0)
     {
@@ -636,12 +654,11 @@ try
             PrintLiveLevel("F4 anchor");
             Console.WriteLine($"F4: reset to vanilla {(LevelIsJog(currentLevelIndex) ? "jog" : "walk")} speed.");
         }
-        else if (message.WParam == 2) break;
     }
     KillTimer(0, timer);
     UnhookWindowsHookEx(keyboardHook);
     UnhookWindowsHookEx(mouseHook);
-    UnregisterHotKey(0, 1); UnregisterHotKey(0, 2);
+    UnregisterHotKey(0, 1);
     if (calibrationMode) { UnregisterHotKey(0, 3); UnregisterHotKey(0, 4); }
     if (adsCalibrationMode) { UnregisterHotKey(0, 5); UnregisterHotKey(0, 8); UnregisterHotKey(0, 9); }
     if (weaponAdsProbeMode) { UnregisterHotKey(0, 6); UnregisterHotKey(0, 7); }

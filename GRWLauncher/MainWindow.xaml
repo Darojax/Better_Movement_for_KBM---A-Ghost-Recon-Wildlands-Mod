@@ -4,7 +4,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="Better Movement for KBM - GRW"
         Icon="Assets/grw.ico"
-        Width="1106" Height="800" MinWidth="1106" MinHeight="760"
+        Width="1106" Height="784" MinWidth="1106" MinHeight="744"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen" UseLayoutRounding="True"
         PreviewMouseLeftButtonDown="MainWindow_PreviewMouseLeftButtonDown">
@@ -244,19 +244,13 @@
 
             <Grid Grid.Row="4" Margin="30,14,24,24">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Button Grid.Column="0" Content="Disable in running game" Command="{Binding RestoreCommand}" Style="{StaticResource SecondaryButton}"
-                        ToolTip="Disables the mod while the game is running" />
-                <Button Grid.Column="2" Content="Enable in running game" Command="{Binding AttachCommand}" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0"
-                        ToolTip="Enables the mod while the game is running" />
-                <Button Grid.Column="3" Content="Launch without mod" Command="{Binding LaunchVanillaCommand}" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0"
-                        ToolTip="Launches the game normally without introducing the mod" />
-                <Button Grid.Column="4" Command="{Binding LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="244" Margin="10,0,0,0"
+                <Button Grid.Column="1" Content="Launch without mod" Command="{Binding LaunchVanillaCommand}" Style="{StaticResource SecondaryButton}"
+                        ToolTip="{Binding LaunchVanillaToolTip}" />
+                <Button Grid.Column="2" Command="{Binding LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="244" Margin="10,0,0,0"
                         ToolTip="{Binding LaunchToolTip}">
                     <TextBlock Text="{Binding PrimaryActionLabel}" Foreground="#12160F" />
                 </Button>
@@ -344,8 +338,6 @@
                         </Style>
                     </Button.Style>
                 </Button>
-                <TextBlock Text="Offline single-player use only" Foreground="#677064" FontSize="10"
-                           HorizontalAlignment="Center" Margin="0,8,0,0" />
             </StackPanel>
         </Grid>
 
@@ -364,7 +356,7 @@
 
             <Grid x:Name="AntiCheatOverlay" Grid.RowSpan="2" Panel.ZIndex="100" Background="#A6000000"
                   Visibility="Collapsed" Focusable="True">
-                <Border Width="760" Height="744" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Border Width="760" Height="628" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{StaticResource WindowBrush}" BorderBrush="#465246" BorderThickness="1" CornerRadius="0">
                     <Grid Margin="28,24,28,24">
                         <Grid.RowDefinitions>
@@ -488,26 +480,10 @@
                             </TextBlock>
                         </StackPanel>
 
-                        <Border Grid.Row="1" Background="#1A201A" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1"
-                                CornerRadius="5" Padding="13,9" Margin="0,16,0,14">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="32" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border Width="24" Height="24" CornerRadius="12" Background="{StaticResource WarningBrush}"
-                                        VerticalAlignment="Center" Margin="-10,0,0,0">
-                                    <TextBlock Text="!" Foreground="#111510" FontSize="15" FontWeight="Bold"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <TextBlock.RenderTransform><TranslateTransform Y="-1" /></TextBlock.RenderTransform>
-                                    </TextBlock>
-                                </Border>
-                                <TextBlock Grid.Column="1"
-                                           Text="Exit Ghost Recon Wildlands before creating a backup. The launcher never combines, restores, or copies saves between different installs automatically."
-                                           Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap"
-                                           VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
+                        <TextBlock Grid.Row="1"
+                                   Text="Exit Ghost Recon Wildlands before creating a backup. 'Back up' buttons are disabled while the game is running."
+                                   Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,16,0,14" />
 
                         <ListBox x:Name="SaveLocationsList" Grid.Row="2" Background="Transparent" BorderThickness="0"
                                  SelectionChanged="SaveLocationsList_SelectionChanged">
@@ -525,8 +501,13 @@
                                                     <ContentPresenter />
                                                 </Border>
                                                 <ControlTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsReady}" Value="True">
+                                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource ReadyBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsReady}" Value="False">
+                                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                                                    </DataTrigger>
                                                     <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                                         <Setter TargetName="ItemBorder" Property="Background" Value="#232C23" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
@@ -758,7 +739,7 @@
                                            Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Justify" Margin="0,3,0,10" />
 
                                 <TextBlock Text="Using Better Movement for KBM" FontSize="13" FontWeight="SemiBold" />
-                                <TextBlock Text="Resolve all red blocked items and create a current save backup, then use Launch with Better Movement for KBM. If the game is already running, you can use the 'Enable in running game' button to make the mod start working. Keep the launcher open in the background while playing. Scroll while moving to adjust speed; the normal walk/jog toggle remains available, and sprinting restores full jogging speed."
+                                <TextBlock Text="Resolve all red blocked items and create a current save backup. It is also strongly recommended to resolve any remaining Caution items. Then use the adaptive green button to launch with Better Movement for KBM, enable it in an already running game, disable it while active, or cancel a pending launch. Keep the launcher open in the background while playing. Scroll while moving to adjust speed; the normal walk/jog toggle remains available, and sprinting restores full jogging speed."
                                            Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Justify" Margin="0,3,0,0" />
                             </StackPanel>
 

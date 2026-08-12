@@ -1,6 +1,6 @@
 # Better Movement for KBM — A Ghost Recon Wildlands Mod
 
-> **Development preview:** this project is under active play-testing and is not ready for public distribution.
+> **Release candidate:** gameplay is working in extended local testing; clean-machine, recovery, packaging, and final compatibility validation remain before the first public release.
 
 <img src="assets/images/nomad_1.png" alt="Nomad in Ghost Recon Wildlands" align="left" width="280" hspace="16">
 
@@ -19,7 +19,7 @@ The mouse wheel traverses one continuous range from a very slow walk to full jog
 - Standing ADS follows the underlying HIP level, with a deliberately limited maximum speed.
 - Crouching is detected automatically and uses separately calibrated walk-ADS and jog-ADS behavior.
 - Wildlands' downstream weapon-dependent speed differences remain; the shared tuning has been validated with an LMG, assault rifle, and pistol.
-- `F5` restores the original game instructions and exits the runtime.
+- The launcher's adaptive green button disables the runtime and restores the original game instructions.
 
 <br clear="left">
 
@@ -32,6 +32,8 @@ Do not use it in co-op, Ghost War, or any online session. Read the full [risk no
 ## Project status and documentation
 
 - [Development TODO and regression contract](TODO.md)
+- [Release checklist](RELEASE_CHECKLIST.md)
+- [Changelog](CHANGELOG.md)
 - [Runtime, installation, and shutdown notes](release/README.md)
 - [License](LICENSE.txt)
 

@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private TaskCompletionSource? _antiCheatPanelCompletion;
     private GameInstallation? _saveInstallation;
     private TaskCompletionSource? _savePanelCompletion;
+    private bool? _savePanelGameRunning;
 
     public MainWindow()
     {
@@ -42,6 +43,11 @@ public partial class MainWindow : Window
         _liveCheckTimer.Tick += async (_, _) =>
         {
             if (AntiCheatOverlay.Visibility == Visibility.Visible) RefreshAntiCheatPanelStatus();
+            if (SaveBackupOverlay.Visibility == Visibility.Visible && SavePanelActions.IsEnabled)
+            {
+                bool gameRunning = Process.GetProcessesByName("GRW").Length > 0;
+                if (_savePanelGameRunning != gameRunning) RefreshSavePanel();
+            }
             await _viewModel.RefreshAsync(recordInLog: false);
         };
         _liveCheckTimer.Start();
@@ -239,6 +245,7 @@ public partial class MainWindow : Window
     {
         if (_saveInstallation is null) return;
         bool gameRunning = Process.GetProcessesByName("GRW").Length > 0;
+        _savePanelGameRunning = gameRunning;
         IReadOnlyList<GameInstallation> installations = GameLocator.FindAll()
             .Append(_saveInstallation)
             .GroupBy(item => item.Storefront, StringComparer.OrdinalIgnoreCase)
@@ -303,6 +310,7 @@ public partial class MainWindow : Window
         {
             string destination = await Task.Run(() => SaveBackupService.BackupLocation(location.Installation, location.Id));
             RefreshSavePanel($"{location.Name} was backed up to {destination}");
+            await _viewModel.RefreshAfterSaveBackupAsync();
         }
         catch (Exception exception)
         {
@@ -357,6 +365,7 @@ public partial class MainWindow : Window
             _savePanelCompletion?.TrySetResult();
             _savePanelCompletion = null;
             _saveInstallation = null;
+            _savePanelGameRunning = null;
             SaveLocationsList.ItemsSource = null;
         };
         SaveBackupOverlay.BeginAnimation(OpacityProperty, fade);
