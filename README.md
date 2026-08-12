@@ -60,7 +60,7 @@ Generated output is written beneath `artifacts/` and is not tracked by Git. The 
 - `docs/` — architecture and maintainer release checklist.
 - `release/` — packaged user guide and Nexus page copy.
 
-See [Architecture](docs/ARCHITECTURE.md) for the component and safety model. The paste-ready public listing is in [Nexus description](release/NEXUS_DESCRIPTION.md).
+See [Architecture](docs/ARCHITECTURE.md) for the component and safety model. The paste-ready BBCode listing is in [Nexus description](release/NEXUS_DESCRIPTION.txt).
 
 ## Source, support, and license
 
