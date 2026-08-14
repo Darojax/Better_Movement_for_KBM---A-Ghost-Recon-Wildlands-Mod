@@ -2,11 +2,11 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-const long ControlSiteRva = 0x133CF7E2;
-const long ProbeSiteRva = 0x133CFF19;
-const long AdsSiteRva = 0x133CFDFF;
-const long AdsTargetRva = 0xA0CF70;
-const long AdsOutputWriterRva = 0x29D7175;
+RuntimeLayout[] supportedLayouts =
+[
+    new("Steam build 24446260", 0x133CF7E2, 0x133CFF19, 0x133CFDFF, 0xA0CF70, 0x29D7175, 0x7D3BC0, true),
+    new("Steam build 24669148", 0x13FDB762, 0x13FDBE99, 0x13FDBD7F, 0xA0B240, 0x29CF1F5, 0x7D2800, false)
+];
 const uint ProcessVmOperation = 0x0008, ProcessVmRead = 0x0010, ProcessVmWrite = 0x0020, ProcessQueryInformation = 0x0400;
 const uint MemCommit = 0x1000, MemReserve = 0x2000, MemRelease = 0x8000;
 const uint PageReadWrite = 0x04, PageExecuteRead = 0x20, PageExecuteReadWrite = 0x40;
@@ -58,27 +58,61 @@ using EventWaitHandle? shutdownEvent = shutdownEventName is null ? null : EventW
 if (new[] { calibrationMode, adsCalibrationMode, weaponAdsProbeMode }.Count(enabled => enabled) > 1)
     throw new InvalidOperationException("Select only one calibration or probe mode at a time.");
 ulong imageBase = unchecked((ulong)(game.MainModule?.BaseAddress.ToInt64() ?? 0));
-ulong controlSite = imageBase + (ulong)ControlSiteRva;
-ulong probeSite = imageBase + (ulong)ProbeSiteRva;
-ulong adsSite = imageBase + (ulong)AdsSiteRva;
-ulong adsTarget = imageBase + (ulong)AdsTargetRva;
-ulong adsOutputWriterSite = imageBase + (ulong)AdsOutputWriterRva;
 nint process = OpenProcess(ProcessVmOperation | ProcessVmRead | ProcessVmWrite | ProcessQueryInformation, false, game.Id);
 if (process == 0) throw new Win32Exception(Marshal.GetLastWin32Error(), "OpenProcess failed");
 
-ulong originalGetter = imageBase + 0x7D3BC0;
-byte[] originalControl = new byte[5];
-originalControl[0] = 0xE8;
-BitConverter.GetBytes(CheckedRelative(controlSite, 5, originalGetter)).CopyTo(originalControl, 1);
-byte[] originalProbe = [0xF3, 0x0F, 0x11, 0x46, 0x60];
-byte[] originalAds = [0xE8, .. BitConverter.GetBytes(CheckedRelative(adsSite, 5, adsTarget))];
-byte[] originalAdsOutputWriter = [0xF3, 0x0F, 0x11, 0x51, 0x20];
-byte[] currentControl = ReadExact(process, controlSite, originalControl.Length);
-byte[] currentProbe = ReadExact(process, probeSite, originalProbe.Length);
-byte[] currentAds = ReadExact(process, adsSite, originalAds.Length);
-byte[] currentAdsOutputWriter = ReadExact(process, adsOutputWriterSite, originalAdsOutputWriter.Length);
+bool restoreMode = args.Contains("--restore", StringComparer.OrdinalIgnoreCase);
+RuntimeLayout? selectedLayout = null;
+byte[] originalControl = [], originalProbe = [], originalAds = [], originalAdsOutputWriter = [];
+byte[] currentControl = [], currentProbe = [], currentAds = [], currentAdsOutputWriter = [];
+foreach (RuntimeLayout candidate in supportedLayouts)
+{
+    ulong candidateControlSite = imageBase + (ulong)candidate.ControlSiteRva;
+    ulong candidateProbeSite = imageBase + (ulong)candidate.ProbeSiteRva;
+    ulong candidateAdsSite = imageBase + (ulong)candidate.AdsSiteRva;
+    byte[] candidateOriginalControl = [0xE8, .. BitConverter.GetBytes(CheckedRelative(candidateControlSite, 5, imageBase + (ulong)candidate.ControlTargetRva))];
+    byte[] candidateOriginalProbe = [0xF3, 0x0F, 0x11, 0x46, 0x60];
+    byte[] candidateOriginalAds = [0xE8, .. BitConverter.GetBytes(CheckedRelative(candidateAdsSite, 5, imageBase + (ulong)candidate.AdsTargetRva))];
+    byte[] candidateOriginalAdsOutputWriter = [0xF3, 0x0F, 0x11, 0x51, 0x20];
+    byte[] candidateCurrentControl = ReadExact(process, candidateControlSite, 5);
+    byte[] candidateCurrentProbe = ReadExact(process, imageBase + (ulong)candidate.ProbeSiteRva, 5);
+    byte[] candidateCurrentAds = ReadExact(process, candidateAdsSite, 5);
+    byte[] candidateCurrentAdsOutputWriter = ReadExact(process, imageBase + (ulong)candidate.AdsOutputWriterRva, 5);
+    bool originalsMatch = candidateCurrentControl.SequenceEqual(candidateOriginalControl)
+        && candidateCurrentProbe.SequenceEqual(candidateOriginalProbe)
+        && candidateCurrentAds.SequenceEqual(candidateOriginalAds)
+        && candidateCurrentAdsOutputWriter.SequenceEqual(candidateOriginalAdsOutputWriter);
+    bool patchedLayoutMatches = restoreMode && candidateCurrentControl[0] == 0xE8
+        && candidateCurrentProbe[0] == 0xE9 && candidateCurrentAds[0] == 0xE9;
+    if (!originalsMatch && !patchedLayoutMatches) continue;
+
+    selectedLayout = candidate;
+    originalControl = candidateOriginalControl;
+    originalProbe = candidateOriginalProbe;
+    originalAds = candidateOriginalAds;
+    originalAdsOutputWriter = candidateOriginalAdsOutputWriter;
+    currentControl = candidateCurrentControl;
+    currentProbe = candidateCurrentProbe;
+    currentAds = candidateCurrentAds;
+    currentAdsOutputWriter = candidateCurrentAdsOutputWriter;
+    break;
+}
+if (selectedLayout is null)
+{
+    CloseHandle(process);
+    throw new InvalidOperationException("Live instructions do not match any supported game build; no changes were made.");
+}
+
+RuntimeLayout layout = selectedLayout;
+ulong controlSite = imageBase + (ulong)layout.ControlSiteRva;
+ulong probeSite = imageBase + (ulong)layout.ProbeSiteRva;
+ulong adsSite = imageBase + (ulong)layout.AdsSiteRva;
+ulong adsTarget = imageBase + (ulong)layout.AdsTargetRva;
+ulong adsOutputWriterSite = imageBase + (ulong)layout.AdsOutputWriterRva;
+ulong originalGetter = imageBase + (ulong)layout.ControlTargetRva;
 if (args.Contains("--verify", StringComparer.OrdinalIgnoreCase))
 {
+    Console.WriteLine($"Recognized {layout.Name}.");
     Console.WriteLine($"Control 0x{controlSite:X16}: {Convert.ToHexString(currentControl)}");
     Console.WriteLine($"Probe   0x{probeSite:X16}: {Convert.ToHexString(currentProbe)}");
     Console.WriteLine($"ADS     0x{adsSite:X16}: {Convert.ToHexString(currentAds)}");
@@ -88,7 +122,7 @@ if (args.Contains("--verify", StringComparer.OrdinalIgnoreCase))
     CloseHandle(process);
     return verified ? 0 : 3;
 }
-if (args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
+if (restoreMode)
 {
     ulong allocation = 0;
     if (!currentControl.SequenceEqual(originalControl))
@@ -112,7 +146,8 @@ string gameExecutable = game.MainModule?.FileName ?? throw new InvalidOperationE
 string gameDirectory = Path.GetDirectoryName(gameExecutable) ?? throw new InvalidOperationException("Could not resolve the Wildlands directory.");
 string[] eacProcesses = Process.GetProcesses().Where(p => p.ProcessName.Contains("easyanticheat", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Equals("eac", StringComparison.OrdinalIgnoreCase)).Select(p => p.ProcessName).Distinct().ToArray();
 if (eacProcesses.Length != 0) throw new InvalidOperationException($"Easy Anti-Cheat appears active ({string.Join(", ", eacProcesses)}). Refusing to attach.");
-if (!SayNoToEacAppearsInstalled(gameDirectory)) throw new InvalidOperationException("SayNoToEAC stub/backup layout was not detected. Refusing to attach.");
+if (layout.RequiresSayNoToEac && !SayNoToEacAppearsInstalled(gameDirectory))
+    throw new InvalidOperationException("SayNoToEAC stub layout was not detected. Refusing to attach.");
 if (!FirewallBlocksProgram(gameExecutable)) Console.WriteLine("CAUTION: no enabled outbound block rule was found for GRW.exe. Offline isolation is strongly recommended.");
 string acceptanceDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GRW Analogue Movement Mod");
 string acceptanceFile = Path.Combine(acceptanceDirectory, "offline-risk-accepted-v1");
@@ -796,3 +831,5 @@ static bool FirewallBlocksProgram(string program)
 [StructLayout(LayoutKind.Sequential)] struct Msg { public nint HWnd; public uint Message; public nuint WParam; public nint LParam; public uint Time; public int X; public int Y; }
 delegate nint LowLevelMouseProc(int code, nint wParam, nint lParam);
 delegate nint LowLevelKeyboardProc(int code, nint wParam, nint lParam);
+sealed record RuntimeLayout(string Name, long ControlSiteRva, long ProbeSiteRva, long AdsSiteRva,
+    long AdsTargetRva, long AdsOutputWriterRva, long ControlTargetRva, bool RequiresSayNoToEac);

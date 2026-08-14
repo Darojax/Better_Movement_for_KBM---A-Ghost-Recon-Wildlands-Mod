@@ -9,10 +9,11 @@ The mod uses the mouse wheel for movement-speed control, so first open **Setting
 - Windows 10 or 11 x64.
 - Steam or Ubisoft Connect version of Ghost Recon Wildlands.
 - [Microsoft .NET 8 Desktop Runtime x64](https://dotnet.microsoft.com/download/dotnet/8.0).
-- SayNoToEAC, installed separately using its original author's instructions.
+- Current EAC-free game build: SayNoToEAC is not required.
+- Legacy builds that still include Easy Anti-Cheat: SayNoToEAC, installed separately using its original author's instructions.
 - Offline single-player only.
 
-SayNoToEAC is not included with this mod. The launcher provides installation guidance and links to its original sources.
+SayNoToEAC is not included with this mod. When a legacy build requires it, the launcher provides installation guidance and links to its original sources.
 
 ## Setup and use
 

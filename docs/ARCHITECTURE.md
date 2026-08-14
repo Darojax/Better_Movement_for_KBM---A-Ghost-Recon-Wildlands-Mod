@@ -27,6 +27,8 @@ The runtime does not patch files on disk. Its changes exist only in the selected
 
 Neither executable performs automatic downloads, telemetry, analytics, or update checks. The launcher contains user-activated links to the original SayNoToEAC sources, which are opened in the default browser only when clicked.
 
+Compatibility profiles are selected by the exact `GRW.exe` SHA-256. Legacy profiles retain the SayNoToEAC requirement; verified builds that no longer include Easy Anti-Cheat omit that obsolete requirement. Every profile still requires exact live instruction verification before any memory write.
+
 Optional Windows Firewall rules are local outbound block rules for detected Ghost Recon Wildlands and Ubisoft Connect executables. They are created or removed only when requested by the user.
 
 ## Local data

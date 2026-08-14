@@ -2,7 +2,15 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
-## 1.0.0-rc.1 — Unreleased
+## 1.1.0 — 2026-08-14
+
+- Added verified compatibility with game version `133.1.0.9840374` / Steam build `24669148` for both Steam and Ubisoft Connect.
+- Added runtime layouts for both the latest and previous verified game builds, retaining exact-byte checks before every memory write.
+- Adapted the launcher to the latest build's native removal of Easy Anti-Cheat: SayNoToEAC is reported as unnecessary and its management action is omitted.
+- Preserved the mandatory SayNoToEAC and active Easy Anti-Cheat safeguards for legacy game builds.
+- Added the current mod version to the launcher header and executable metadata.
+
+## 1.0.0-rc.1 — 2026-08-13
 
 - Added a unified 27-position mouse-wheel movement ladder spanning slow walk through full jog.
 - Preserved the native `X` walk/jog shortcut and sprint-release return to full jog.

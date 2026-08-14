@@ -8,7 +8,7 @@ Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consi
 
 [b]This mod temporarily modifies the running GRW.exe process.[/b] Ubisoft or its anti-cheat systems may treat process-memory modification as prohibited activity. Possible consequences include detection, crashes, corrupted saves, account suspension, or a permanent ban.
 
-[b]Use the mod only in offline single-player. Never use it in co-op, Ghost War, or any online session.[/b] SayNoToEAC, firewall isolation, save backups, and offline procedures reduce particular risks but cannot guarantee account or data safety. Use the mod entirely at your own risk.
+[b]Use the mod only in offline single-player. Never use it in co-op, Ghost War, or any online session.[/b] Firewall isolation, save backups, offline procedures, and—on legacy builds—SayNoToEAC reduce particular risks but cannot guarantee account or data safety. Use the mod entirely at your own risk.
 
 [heading]Requirements[/heading]
 
@@ -16,10 +16,11 @@ Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consi
 [*]A legitimate Steam or Ubisoft Connect copy of Ghost Recon Wildlands.
 [*]Windows 10 or 11 x64.
 [*][url=https://dotnet.microsoft.com/download/dotnet/8.0]Microsoft .NET 8 Desktop Runtime x64[/url].
-[*][url=https://fearlessrevolution.com/viewtopic.php?t=5980]SayNoToEAC by SunBeam[/url], installed separately. An [url=https://www.gamepressure.com/download/tom-clancys-ghost-recon-wildlands-saynotoeac-mod/z113c5e]alternative download mirror[/url] is also available.
+[*]Current EAC-free game build: SayNoToEAC is not required.
+[*]Legacy builds that still include Easy Anti-Cheat: [url=https://fearlessrevolution.com/viewtopic.php?t=5980]SayNoToEAC by SunBeam[/url], installed separately. An [url=https://www.gamepressure.com/download/tom-clancys-ghost-recon-wildlands-saynotoeac-mod/z113c5e]alternative download mirror[/url] is also available.
 [/list]
 
-SayNoToEAC is not included with this mod. The launcher provides installation guidance and verifies whether its replacement DLLs are present.
+SayNoToEAC is not included with this mod. The launcher identifies whether the selected build requires it and, when necessary, provides installation guidance and verifies whether its replacement DLLs are present.
 
 [heading]Installation[/heading]
 
@@ -63,7 +64,7 @@ See the README included in the download for removal instructions, additional saf
 
 [heading]Compatibility and support[/heading]
 
-Tested on Windows 11 with the current Steam and Ubisoft Connect versions of Ghost Recon Wildlands. This is the initial public release candidate, so please report reproducible problems through the Nexus Posts/Bugs sections or the [url=https://github.com/Darojax/Better_Movement_for_KBM---A-Ghost-Recon-Wildlands-Mod]GitHub repository[/url].
+Tested on Windows 11 with game version 133.1.0.9840374 / Steam build 24669148 and the previous verified Steam and Ubisoft Connect builds. Please report reproducible problems through the Nexus Posts/Bugs sections or the [url=https://github.com/Darojax/Better_Movement_for_KBM---A-Ghost-Recon-Wildlands-Mod]GitHub repository[/url].
 
 Better Movement for KBM is an unofficial community mod and is not affiliated with or endorsed by Ubisoft, Easy Anti-Cheat/Epic Games, or Nexus Mods.
 

@@ -7,8 +7,11 @@ namespace GRWBetterMovementLauncher.Services;
 
 public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
 {
-    private const string TestedExecutableHash = "56791FF5A6C213A77EEBEDAEAEE3026D63B70806071358CE96ABD3ED7947ADE7";
-    private const string TestedSteamBuild = "24446260";
+    private const string LegacyExecutableHash = "56791FF5A6C213A77EEBEDAEAEE3026D63B70806071358CE96ABD3ED7947ADE7";
+    private const string CurrentExecutableHash = "4B222677C5068D40104144AF79F0E31FDC4D62D1A48F6BA07BC70B4EE167E56E";
+    private const string LegacySteamBuild = "24446260";
+    private const string CurrentSteamBuild = "24669148";
+    private const string CurrentGameVersion = "133.1.0.9840374";
     private static readonly string StateDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GRW Analogue Movement Mod");
     private static readonly string AcceptanceFile = Path.Combine(StateDirectory, "offline-risk-accepted-v1");
@@ -64,14 +67,17 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
             {
                 checks.Add(new("installation", "Game installation", $"{_installation.Storefront} · {_installation.Directory}", CheckStatus.Ready, "Change", "choose-game"));
                 checks.Add(BuildExecutableCheck(_installation));
-                checks.Add(BuildSayNoToEacCheck(_installation.Directory));
+                checks.Add(BuildSayNoToEacCheck(_installation));
             }
 
             string[] eacProcesses = processes.EacProcesses;
+            bool nativeEacFreeBuild = _installation is not null && IsCurrentEacFreeBuild(_installation.Executable);
             checks.Add(eacProcesses.Length == 0
-                ? gameRunning
-                    ? new("eac", "Easy Anti-Cheat", "No active Easy Anti-Cheat process detected.", CheckStatus.Ready)
-                    : new("eac", "Easy Anti-Cheat", "Not detected, but Ghost Recon Wildlands is not running.", CheckStatus.Inactive)
+                ? nativeEacFreeBuild
+                    ? new("eac", "Easy Anti-Cheat", $"Not included in compatible game version {CurrentGameVersion}.", CheckStatus.Ready)
+                    : gameRunning
+                        ? new("eac", "Easy Anti-Cheat", "No active Easy Anti-Cheat process detected.", CheckStatus.Ready)
+                        : new("eac", "Easy Anti-Cheat", "Not detected, but Ghost Recon Wildlands is not running.", CheckStatus.Inactive)
                 : new("eac", "Easy Anti-Cheat", $"Active process detected: {string.Join(", ", eacProcesses)}.", CheckStatus.Blocked));
 
             RefreshFirewallIfNeeded();
@@ -147,8 +153,8 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
             case "show-signatures":
                 EnsureInstallation();
                 string hash = await GetExecutableHashAsync(_installation!.Executable, cancellationToken);
-                return new LauncherActionResult(hash.Equals(TestedExecutableHash, StringComparison.OrdinalIgnoreCase)
-                    ? $"{_installation.Storefront} executable matches the tested Steam public build {TestedSteamBuild}. SHA-256: {hash}"
+                return new LauncherActionResult(TryGetCompatibleBuild(hash, out string? build)
+                    ? $"{_installation.Storefront} executable matches the tested Steam public build {build}. SHA-256: {hash}"
                     : $"Unrecognized executable SHA-256: {hash}. Exact in-memory signatures remain mandatory before attachment.");
 
             case "verify-hooks":
@@ -252,7 +258,10 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         if (_runtimeProcess is { HasExited: false }) throw new InvalidOperationException("Better Movement for KBM is already active.");
         if (ActiveEacProcesses().Length > 0) throw new InvalidOperationException("Easy Anti-Cheat is active. The mod will not attach.");
         EnsureInstallation();
-        if (!SayNoToEacAppearsInstalled(_installation!.Directory)) throw new InvalidOperationException("SayNoToEAC was not detected. The mod will not attach.");
+        string executableHash = await GetExecutableHashAsync(_installation!.Executable, cancellationToken);
+        if (!executableHash.Equals(CurrentExecutableHash, StringComparison.OrdinalIgnoreCase)
+            && !SayNoToEacAppearsInstalled(_installation.Directory))
+            throw new InvalidOperationException("SayNoToEAC was not detected. The mod will not attach.");
         string runtime = ResolveRuntimeExecutable();
         string eventName = $"Local\\BetterMovement-{Environment.ProcessId}-{Guid.NewGuid():N}";
         _shutdownEvent = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
@@ -412,17 +421,51 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
                     "The executable hash could not be read. Live game code will still be checked before enabling the mod.");
         }
 
-        string version = installation.BuildIdentifier ?? $"Ubisoft executable matches Steam build {TestedSteamBuild}";
-        return hash!.Equals(TestedExecutableHash, StringComparison.OrdinalIgnoreCase)
-            ? new("executable", "Game executable", $"Game executable matches the compatible Steam build {TestedSteamBuild}.", CheckStatus.Ready, null, null,
+        bool compatible = TryGetCompatibleBuild(hash!, out string? compatibleBuild);
+        string version = installation.BuildIdentifier ?? (compatible
+            ? $"Ubisoft executable matches Steam build {compatibleBuild}"
+            : "Ubisoft Connect build identifier unavailable");
+        return compatible
+            ? new("executable", "Game executable", compatibleBuild == CurrentSteamBuild
+                    ? $"Game version {CurrentGameVersion} is compatible."
+                    : $"Game executable matches the compatible Steam build {compatibleBuild}.", CheckStatus.Ready, null, null,
                 $"{version}. The executable matches the tested SHA-256. Live game code is checked again before enabling the mod.")
             : new("executable", "Game executable", "Untested build detected.", CheckStatus.Warning, null, null,
                 $"{version}. The mod enables only if every live code check passes.");
     }
 
-    private static LauncherCheck BuildSayNoToEacCheck(string gameDirectory) => SayNoToEacAppearsInstalled(gameDirectory)
-        ? new("saynotoeac", "SayNoToEAC", "SayNoToEAC replacement DLLs detected.", CheckStatus.Ready, "Manage", "manage-eac")
-        : new("saynotoeac", "SayNoToEAC", "SayNoToEAC was not detected in this game installation.", CheckStatus.Blocked, "Manage", "manage-eac");
+    private LauncherCheck BuildSayNoToEacCheck(GameInstallation installation)
+    {
+        if (IsCurrentEacFreeBuild(installation.Executable))
+            return new("saynotoeac", "SayNoToEAC", $"Not required for game version {CurrentGameVersion}.", CheckStatus.Ready);
+
+        if (SayNoToEacAppearsInstalled(installation.Directory))
+            return new("saynotoeac", "SayNoToEAC", "SayNoToEAC replacement DLLs detected.", CheckStatus.Ready, "Manage", "manage-eac");
+
+        return new("saynotoeac", "SayNoToEAC", "SayNoToEAC was not detected in this game installation.", CheckStatus.Blocked, "Manage", "manage-eac");
+    }
+
+    private string? CurrentExecutableHashFor(string executable) =>
+        string.Equals(_hashedPath, executable, StringComparison.OrdinalIgnoreCase) ? _executableHash : null;
+
+    private bool IsCurrentEacFreeBuild(string executable) =>
+        CurrentExecutableHash.Equals(CurrentExecutableHashFor(executable), StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryGetCompatibleBuild(string hash, out string? build)
+    {
+        if (hash.Equals(CurrentExecutableHash, StringComparison.OrdinalIgnoreCase))
+        {
+            build = CurrentSteamBuild;
+            return true;
+        }
+        if (hash.Equals(LegacyExecutableHash, StringComparison.OrdinalIgnoreCase))
+        {
+            build = LegacySteamBuild;
+            return true;
+        }
+        build = null;
+        return false;
+    }
 
     private static LauncherCheck BuildFirewallCheck(string id, string title, FirewallStatus? status, string category)
     {

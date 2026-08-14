@@ -109,7 +109,7 @@
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                         <Image Source="Assets/better_movement_for_kbm_logo_small_and_trimmed.png" Width="301" Height="49"
                                Stretch="Uniform" VerticalAlignment="Bottom" />
-                        <TextBlock Text="by Codex &amp; Darojax" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
+                        <TextBlock Text="v1.1 - by Codex and Darojax" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
                                    Margin="10,0,0,6" VerticalAlignment="Bottom" />
                     </StackPanel>
                 </StackPanel>
@@ -765,7 +765,7 @@
                                 <TextBlock Text="An untested game executable may still work because the runtime verifies every required instruction before writing. A compatibility caution means the executable has not yet been confirmed compatible with the current game version, but it may (or may not) still work."
                                            Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Justify" Margin="0,3,0,13" />
 
-                                <TextBlock Text="Red blocked items, such as no detected SayNoToEAC installation, prevent the mod from working entirely."
+                                <TextBlock Text="Red blocked items prevent the mod from working. Legacy game builds that still include Easy Anti-Cheat require SayNoToEAC; compatible EAC-free builds do not."
                                            Foreground="{StaticResource TextBrush}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
