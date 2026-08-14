@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.0.0-rc.1",
+    [string]$Version = "1.1.0",
     [string]$CertificateThumbprint = "",
     [string]$TimestampUrl = "http://timestamp.digicert.com"
 )

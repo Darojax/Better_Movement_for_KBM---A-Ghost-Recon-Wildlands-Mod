@@ -6,7 +6,7 @@ Better Movement for KBM is a Windows mod that gives mouse-and-keyboard players s
 
 Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent.
 
-> **Release status:** `1.0.0-rc.1` is the initial public release candidate.
+> **Current release:** `1.1.0`, compatible with game version `133.1.0.9840374` / Steam build `24669148` and the previous verified build.
 
 ## Features
 
@@ -14,7 +14,7 @@ Scroll the mouse wheel while moving to transition naturally from a very slow wal
 - Native `X` walk/jog shortcut and normal sprint behavior remain available.
 - Adjusted standing, crouched, and Aim-Down-Sight movement.
 - Portable launcher supporting Steam and Ubisoft Connect installations.
-- Live compatibility, SayNoToEAC, Easy Anti-Cheat, runtime, firewall, and save-backup checks.
+- Live compatibility, anti-cheat, runtime, firewall, and save-backup checks that adapt to the selected game build.
 - Optional Windows Firewall controls and edition-separated save backups.
 - Exact-byte verification before modifying the game and supervised restoration when the mod stops.
 
@@ -23,7 +23,8 @@ Scroll the mouse wheel while moving to transition naturally from a very slow wal
 - Windows 10 or 11 x64.
 - A legitimate Steam or Ubisoft Connect copy of Ghost Recon Wildlands.
 - [Microsoft .NET 8 Desktop Runtime x64](https://dotnet.microsoft.com/download/dotnet/8.0).
-- SayNoToEAC by SunBeam, installed separately.
+- Current EAC-free game build: no SayNoToEAC installation is required.
+- Legacy builds that still include Easy Anti-Cheat: SayNoToEAC by SunBeam, installed separately.
 - Offline single-player only.
 
 Download the portable release, extract the complete ZIP anywhere, and run `Better Movement for KBM - GRW.exe`. See the [packaged installation and usage guide](release/README.md) for setup, controls, safe shutdown, and removal.

@@ -10,5 +10,8 @@
     <AssemblyTitle>Better Movement for KBM - GRW</AssemblyTitle>
     <Product>Better Movement for KBM - GRW</Product>
     <Description>Better Movement for KBM - GRW</Description>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
   </PropertyGroup>
 </Project>
