@@ -2,6 +2,12 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
+## 2.0.1 — 2026-08-17
+
+- Fixed a low-speed gait transition that could make one or two upward wheel steps jump to vanilla walking speed.
+- Restored immediate native Walk/Jog toggle response while retaining protection against wheel-induced gait changes.
+- Added stationary speed selection: wheel adjustments made while standing still now apply when movement begins.
+
 ## 2.0.0 — 2026-08-17
 
 - Replaced the external launcher/runtime architecture with a native in-process ASI.
