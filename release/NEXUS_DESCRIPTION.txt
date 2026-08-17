@@ -1,76 +1,72 @@
-[heading]Better Movement for KBM[/heading]
+[heading][color=#93c47d]Better Movement for KBM[/color][/heading]
 
-Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in Ghost Recon Wildlands. Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog.
+Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in Ghost Recon Wildlands—similar to the analogue movement available with a gamepad.
 
-Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent. The portable launcher supports both Steam and Ubisoft Connect installations and includes save backups, optional Windows Firewall controls, and live safety checks.
+Scroll the mouse wheel while moving to transition naturally between a very slow walk and full jogging speed. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent with normal movement.
 
-[heading]Important — offline single-player only[/heading]
+Version 2.0.0 is a lightweight native ASI mod. It requires no launcher, configuration file, .NET runtime, firewall rules, or SayNoToEAC installation.
 
-[b]This mod temporarily modifies the running GRW.exe process.[/b] Ubisoft or its anti-cheat systems may treat process-memory modification as prohibited activity. Possible consequences include detection, crashes, corrupted saves, account suspension, or a permanent ban.
-
-[b]Use the mod only in offline single-player. Never use it in co-op, Ghost War, or any online session.[/b] Firewall isolation, save backups, offline procedures, and—on legacy builds—SayNoToEAC reduce particular risks but cannot guarantee account or data safety. Use the mod entirely at your own risk.
-
-[heading]Requirements[/heading]
+[heading][color=#93c47d]Requirements[/color][/heading]
 
 [list]
-[*]A legitimate Steam or Ubisoft Connect copy of Ghost Recon Wildlands.
-[*]Windows 10 or 11 x64.
-[*][url=https://dotnet.microsoft.com/download/dotnet/8.0]Microsoft .NET 8 Desktop Runtime x64[/url].
-[*]Current EAC-free game build: SayNoToEAC is not required.
-[*]Legacy builds that still include Easy Anti-Cheat: [url=https://fearlessrevolution.com/viewtopic.php?t=5980]SayNoToEAC by SunBeam[/url], installed separately. An [url=https://www.gamepressure.com/download/tom-clancys-ghost-recon-wildlands-saynotoeac-mod/z113c5e]alternative download mirror[/url] is also available.
+[*]A legitimate Steam or Ubisoft Connect copy of Ghost Recon Wildlands.[/*]
+[*]Windows 10 or 11 x64.[/*]
+[*]The currently supported Ghost Recon Wildlands executable.[/*]
 [/list]
 
-SayNoToEAC is not included with this mod. The launcher identifies whether the selected build requires it and, when necessary, provides installation guidance and verifies whether its replacement DLLs are present.
+The required x64 Ultimate ASI Loader is included as [b]winmm.dll[/b].
 
-[heading]Installation[/heading]
+[heading][color=#93c47d]Installation[/color][/heading]
 
 [list=1]
-[*]Install the requirements listed above.
-[*]Extract the complete Better Movement for KBM ZIP into any folder of your choice.
-[*]Run Better Movement for KBM - GRW.exe.
-[*]Select the correct game installation if more than one is detected.
-[*]Follow the launcher's checklist and create a save backup.
-[*]Optionally install the recommended Windows Firewall blocks.
-[*]Click [b]Launch with Better Movement for KBM[/b].
+[*]Exit Ghost Recon Wildlands.[/*]
+[*]Open the game installation folder containing [b]GRW.exe[/b].[/*]
+[*]Extract [b]BetterMovementForKBM.asi[/b] and [b]winmm.dll[/b] into that folder, beside GRW.exe.[/*]
+[*]Launch the game normally through Steam or Ubisoft Connect.[/*]
 [/list]
 
-Keep the launcher open while playing. The green button adapts automatically to launch the game, enable or disable the mod in a running game, or cancel a pending launch.
+The mod loads automatically with the game. [b]Do not use the legacy Launcher Edition and the ASI Edition simultaneously.[/b]
 
-[heading]Controls[/heading]
+[heading][color=#93c47d]Controls[/color][/heading]
 
-Before playing, open [b]Settings → Key Mapping → Player Combat[/b] and reassign [b]Next Weapon[/b] and [b]Previous Weapon[/b] to controls other than the mouse wheel. Keys 1, 2, and 3 remain available for direct weapon selection.
+Before playing, open [b]Settings → Key Mapping → Player Combat[/b] and reassign [b]Next Weapon[/b] and [b]Previous Weapon[/b] away from Mouse Wheel Up and Mouse Wheel Down. Keys 1, 2, and 3 remain available for direct weapon selection.
 
 [list]
-[*][b]Mouse wheel while moving:[/b] Adjust movement speed.
-[*][b]Walk/jog shortcut:[/b] Switch immediately to the opposite vanilla walk/jog speed. It defaults to X and can be changed or disabled from [b]Controls[/b] in the launcher, including while the mod is running.
-[*][b]Shift:[/b] Sprint normally; releasing it returns to full jogging speed.
+[*][b]Mouse wheel while moving:[/b] Adjust movement speed.[/*]
+[*][b]Your configured Walk/Jog key:[/b] Switch immediately to the opposite vanilla movement range.[/*]
+[*][b]Sprint:[/b] Sprint normally; releasing it restores full jogging speed.[/*]
+[*][b]Mouse wheel while aiming:[/b] Continue adjusting the underlying movement speed.[/*]
 [/list]
 
-[heading]If the game cannot start[/heading]
+The mod automatically uses the Walk/Jog key configured inside Ghost Recon Wildlands. It is not hardcoded to X.
 
-Some systems require one normal online launch before firewall isolation will work. In the launcher, uninstall both Windows Firewall blocks, start the game normally while online, reach the main menu, and exit. Reinstall the firewall blocks before the next modded session.
-
-[heading]Safe use[/heading]
+[heading][color=#93c47d]Compatibility[/color][/heading]
 
 [list]
-[*]Back up your saves before playing.
-[*]Confirm Easy Anti-Cheat is not running.
-[*]Use only offline single-player.
-[*]Disable the mod through the launcher and exit Ghost Recon Wildlands before reconnecting or entering an online mode.
-[*]If the launcher or runtime is forcibly terminated, exit the game before doing anything online.
+[*]Ghost Recon Wildlands version [b]133.1.0.9840374[/b].[/*]
+[*]Steam build [b]24669148[/b].[/*]
+[*]Current Steam and Ubisoft Connect installations using the compatible executable.[/*]
 [/list]
 
-See the README included in the download for removal instructions, additional safety information, the full disclaimer, and license.
+Before applying any modification, the ASI verifies the exact game instructions it expects to find. Unsupported or modified executables are left untouched.
 
-[heading]Compatibility and support[/heading]
+[heading][color=#93c47d]Usage and safety[/color][/heading]
 
-Tested on Windows 11 with game version 133.1.0.9840374 / Steam build 24669148 and the previous verified Steam and Ubisoft Connect builds. Please report reproducible problems through the Nexus Posts/Bugs sections or the [url=https://github.com/Darojax/Better_Movement_for_KBM---A-Ghost-Recon-Wildlands-Mod]GitHub repository[/url].
+Better Movement for KBM is intended and tested for single-player use. Back up important saves before using any game modification.
 
-Better Movement for KBM is an unofficial community mod and is not affiliated with or endorsed by Ubisoft, Easy Anti-Cheat/Epic Games, or Nexus Mods.
+The ASI modifies movement instructions inside the running game process. This is normal for this type of mod, but unofficial modifications are always used at the player’s own risk. The mod does not install a background service or remain active after the game closes.
 
-[heading]Credits[/heading]
+[heading][color=#93c47d]Uninstallation[/color][/heading]
+
+Exit Ghost Recon Wildlands, then remove [b]BetterMovementForKBM.asi[/b] and [b]winmm.dll[/b]. If another mod uses the same ASI loader, keep winmm.dll and remove only the ASI.
+
+[heading][color=#93c47d]Support, source and credits[/color][/heading]
+
+Report reproducible problems through the Nexus Posts/Bugs sections or the [url=https://github.com/Darojax/Better_Movement_for_KBM---A-Ghost-Recon-Wildlands-Mod]GitHub repository[/url]. The complete source code is publicly available there.
 
 [list]
-[*]Better Movement for KBM: Codex & Darojax.
-[*]SayNoToEAC: SunBeam. Distributed separately and not included with this mod.
+[*]Better Movement for KBM: Codex & Darojax.[/*]
+[*]Ultimate ASI Loader: [url=https://github.com/ThirteenAG/Ultimate-ASI-Loader]ThirteenAG[/url].[/*]
 [/list]
+
+Better Movement for KBM is an unofficial community mod and is not affiliated with or endorsed by Ubisoft, Epic Games, Nexus Mods, or the Ultimate ASI Loader project.

@@ -2,71 +2,70 @@
 
 <img src="assets/images/better_movement_for_kbm_logo_small_and_trimmed.png" alt="Better Movement for KBM" width="360">
 
-Better Movement for KBM is a Windows mod that gives mouse-and-keyboard players smooth, granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*.
+Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*.
 
-Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent.
+Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Standing, crouched, and Aim-Down-Sight movement speeds are adjusted to feel more consistent.
 
-> **Current release:** `1.2.0`, compatible with game version `133.1.0.9840374` / Steam build `24669148` and the previous verified build.
+> **Current release:** `2.0.0`, for game version `133.1.0.9840374` / Steam build `24669148`.
 
 ## Features
 
 - One continuous mouse-wheel range from slow walking to full jogging.
-- Configurable walk/jog shortcut (`X` by default, or disabled) and normal sprint behavior remain available.
-- Adjusted standing, crouched, and Aim-Down-Sight movement.
-- Portable launcher supporting Steam and Ubisoft Connect installations.
-- Live compatibility, anti-cheat, runtime, firewall, and save-backup checks that adapt to the selected game build.
-- Optional Windows Firewall controls and edition-separated save backups.
-- Exact-byte verification before modifying the game and supervised restoration when the mod stops.
+- Uses the Walk/Jog key configured inside Ghost Recon Wildlands.
+- Sprinting restores full jogging speed.
+- Calibrated standing, crouched, and Aim-Down-Sight movement.
+- Exact instruction verification before any game code is changed.
+- Native in-process ASI runtime with no launcher, configuration, or external process-memory access.
 
-## Requirements and installation
+## Installation
 
-- Windows 10 or 11 x64.
-- A legitimate Steam or Ubisoft Connect copy of Ghost Recon Wildlands.
-- [Microsoft .NET 8 Desktop Runtime x64](https://dotnet.microsoft.com/download/dotnet/8.0).
-- Current EAC-free game build: no SayNoToEAC installation is required.
-- Legacy builds that still include Easy Anti-Cheat: SayNoToEAC by SunBeam, installed separately.
-- Offline single-player only.
+1. Exit Ghost Recon Wildlands.
+2. Download and extract the v2.0 ASI package.
+3. Copy `BetterMovementForKBM.asi` and `winmm.dll` beside `GRW.exe`.
+4. Launch the game normally through Steam or Ubisoft Connect.
 
-Download the portable release, extract the complete ZIP anywhere, and run `Better Movement for KBM - GRW.exe`. See the [packaged installation and usage guide](release/README.md) for setup, controls, safe shutdown, and removal.
+No launcher, .NET runtime, INI file, firewall rule, or SayNoToEAC installation is required.
 
 Before playing, open **Settings → Key Mapping → Player Combat** and reassign **Next Weapon** and **Previous Weapon** away from the mouse wheel.
 
-## Important safety warning
+To uninstall, exit the game and delete `BetterMovementForKBM.asi` and `winmm.dll`. If another mod uses the same ASI loader, keep `winmm.dll` and remove only the ASI.
 
-This unofficial mod temporarily modifies the running `GRW.exe` process. Ubisoft or its anti-cheat systems may treat process-memory modification as prohibited activity. No launcher check, firewall rule, offline procedure, or anti-cheat replacement can guarantee account safety.
+## Safety
 
-Never use the mod in co-op, Ghost War, or any online session. Back up saves before use and read the full risk notice and disclaimer in the [packaged README](release/README.md).
+Use this unofficial mod only in single-player. Do not use it in co-op or Ghost War. Back up important saves before using any game modification.
 
-## Building from source
+The ASI modifies movement instructions inside the running game process. This is normal for this type of mod, but unofficial modifications are always used at the player's own risk.
 
-The launcher and supervised runtime target .NET 8 for 64-bit Windows. Building requires the .NET 8 SDK or newer:
+## Building
 
-```powershell
-dotnet build .\BetterMovementForKBM.slnx -c Release
-```
-
-Create the framework-dependent portable and source archives with:
+Build the native x64 release with Visual Studio's C++ toolchain:
 
 ```powershell
-.\build-release.ps1
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' `
+    .\BetterMovementASI\BetterMovementASI.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
 
-Generated output is written beneath `artifacts/` and is not tracked by Git. The portable package contains a single-file launcher, a single-file runtime helper, and one README.
+Create the Nexus package with:
 
-## Repository layout
+```powershell
+.\build-asi-release.ps1
+```
 
-- `GRWLauncher/` — WPF launcher, checks, storefront launch, backups, firewall controls, and runtime supervision.
-- `GRWMovementRuntime/` — verified movement hook and restoration runtime.
-- `assets/` — launcher icon and interface artwork.
-- `docs/` — architecture and maintainer release checklist.
-- `release/` — packaged user guide and Nexus page copy.
+Generated output is written beneath `artifacts/` and is not tracked by Git.
 
-See [Architecture](docs/ARCHITECTURE.md) for the component and safety model. The paste-ready BBCode listing is in [Nexus description](release/NEXUS_DESCRIPTION.txt).
+## Project layout
 
-## Source, support, and license
+- `BetterMovementASI/` — native x64 movement runtime.
+- `docs/ARCHITECTURE.md` — runtime architecture and compatibility model.
+- `docs/RELEASE_CHECKLIST.md` — maintainer release procedure.
+- `release/README.txt` — packaged installation, usage, safety, and third-party license text.
+- `release/NEXUS_DESCRIPTION.txt` — paste-ready Nexus Mods page copy.
+- `build-asi-release.ps1` — reproducible minimal-package build.
 
-The launcher performs no automatic downloads, telemetry, or update checks. Its external SayNoToEAC links open only after a user clicks them.
+The former v1.x launcher and external runtime remain available in the `v1.2.0` Git tag.
 
-Report reproducible problems through GitHub Issues or the Nexus Mods page. Include the game edition, launcher status text, and relevant activity-log output, but never upload personal save data.
+## Credits and license
 
-Released under the [MIT License](LICENSE.txt). Better Movement for KBM is developed by Codex & Darojax. SayNoToEAC is a separate third-party project by SunBeam and is not included.
+Better Movement for KBM is developed by Codex & Darojax and released under the [MIT License](LICENSE.txt).
+
+The package includes [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) by ThirteenAG, distributed under its MIT License. Its full license notice is included in the packaged README.

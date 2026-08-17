@@ -1,49 +1,35 @@
 # Architecture
 
-Better Movement for KBM is split into two processes so the user interface can supervise a narrow movement runtime and request clean restoration independently.
+Better Movement for KBM v2 is a native x64 ASI loaded into `GRW.exe` by Ultimate ASI Loader. It has no companion launcher, background service, configuration file, telemetry, networking, or external process-memory component.
 
-## Launcher
+## Startup and compatibility
 
-`GRWLauncher` is the WPF user interface. It:
+The ASI confirms that its host is `GRW.exe`, validates the executable image boundaries, and compares every required instruction with the expected bytes for the supported build. Only after all checks pass does it allocate a local code cave and install the movement, gait-probe, and ADS redirects as one unit. Any failed write or verification restores the original instructions and releases the allocation.
 
-- discovers Steam, Ubisoft Connect, and manually selected installations;
-- evaluates game compatibility and local safety state;
-- manages explicit save-backup and Windows Firewall actions;
-- launches the selected storefront and waits for the matching `GRW.exe` process;
-- starts, verifies, monitors, and stops the movement runtime; and
-- stores launcher settings and backups outside the portable application folder.
+Supported release target:
 
-Opening the launcher performs read-only inspection. Game launch, attachment, backup creation, firewall changes, and launcher-data cleanup require an explicit user action. Firewall changes are the only actions that request administrator approval.
+- Ghost Recon Wildlands `133.1.0.9840374`
+- Steam build `24669148`
+- Current Steam and Ubisoft Connect executables sharing that verified layout
 
-## Movement runtime
+Unsupported or modified executables are left untouched.
 
-`GRWMovementRuntime` is a separate console process started by the launcher for one specific `GRW.exe` process ID. It implements the mouse-wheel movement ladder and the standing, crouched, and Aim-Down-Sight movement model.
+## Runtime
 
-Before writing, the runtime verifies every required instruction against the exact expected original bytes. If any site differs, attachment is refused. During normal shutdown it restores the original instructions and releases its remote allocation. The launcher supervises shutdown through a private named event and reports verification or restoration failures.
+The runtime observes the game's native gait state, so the Walk/Jog binding configured in Wildlands remains authoritative. Mouse-wheel input selects the calibrated movement ladder, sprint restores full jogging speed, and the ADS redirect applies the standing and crouched calibration.
 
-The runtime does not patch files on disk. Its changes exist only in the selected running game process.
+The worker waits until Wildlands has remained in the foreground before installing its low-level mouse hook. All memory access is confined to the current `GRW.exe` process.
 
-## Network behavior
+## Shutdown
 
-Neither executable performs automatic downloads, telemetry, analytics, or update checks. The launcher contains user-activated links to the original SayNoToEAC sources, which are opened in the default browser only when clicked.
+On normal runtime shutdown, the mouse hook and timer are removed, original instructions are restored, and the code cave is released. Closing the game naturally releases the entire process image.
 
-Compatibility profiles are selected by the exact `GRW.exe` SHA-256. Legacy profiles retain the SayNoToEAC requirement; verified builds that no longer include Easy Anti-Cheat omit that obsolete requirement. Every profile still requires exact live instruction verification before any memory write.
+## Distribution
 
-Optional Windows Firewall rules are local outbound block rules for detected Ghost Recon Wildlands and Ubisoft Connect executables. They are created or removed only when requested by the user.
+The release package contains:
 
-## Local data
+- `BetterMovementForKBM.asi`
+- `winmm.dll` from Ultimate ASI Loader by ThirteenAG
+- `README.txt`, including the required third-party MIT license notice
 
-The launcher stores its settings, risk acknowledgement, save-source identities, and backup metadata in the user's local application-data area. Save backups are kept separately by game installation and source identity. Automatic save restoration is intentionally not provided.
-
-The **Remove launcher data** workflow removes launcher-created settings, backups, and project-managed firewall rules. It does not remove normal game saves or SayNoToEAC/Easy Anti-Cheat files.
-
-## Packaging
-
-The public package is framework-dependent and requires the Microsoft .NET 8 Desktop Runtime x64. Each application is published as a single executable, producing this portable layout:
-
-```text
-Better Movement for KBM - GRW.exe
-README.md
-Runtime/
-  GRWAnalogueMovement.exe
-```
+The v1.x launcher architecture is preserved in Git history and the `v1.2.0` tag; it is not part of the v2 main branch.

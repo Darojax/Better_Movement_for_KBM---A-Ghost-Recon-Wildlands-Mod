@@ -1,4 +1,3 @@
 <Solution>
-  <Project Path="GRWLauncher/GRWLauncher.csproj" />
-  <Project Path="GRWMovementRuntime/GRWMovementRuntime.csproj" />
+  <Project Path="BetterMovementASI/BetterMovementASI.vcxproj" />
 </Solution>

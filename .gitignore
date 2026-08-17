@@ -1,11 +1,13 @@
-# .NET build output
+# Build output
 **/bin/
 **/obj/
 *.dll
 *.exe
 *.pdb
+*.obj
 *.deps.json
 *.runtimeconfig.json
+*.asi
 
 # Release packages and third-party tools
 /artifacts/

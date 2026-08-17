@@ -2,6 +2,19 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
+## 2.0.0 — 2026-08-17
+
+- Replaced the external launcher/runtime architecture with a native in-process ASI.
+- Reduced installation to `BetterMovementForKBM.asi` and `winmm.dll` beside `GRW.exe`.
+- Removed the launcher, .NET dependency, configuration file, routine logging, firewall management, save-backup interface, and SayNoToEAC requirement.
+- Restricted compatibility to the current EAC-free game version `133.1.0.9840374` / Steam build `24669148`.
+- Preserved the complete movement model: unified mouse-wheel control, native in-game Walk/Jog binding, sprint reset, and calibrated standing/crouched ADS behavior.
+- Added atomic exact-instruction validation and rollback for all three in-process redirects.
+- Removed all external-process memory APIs from the active runtime.
+- Added Ultimate ASI Loader v9.7.4 x64 with its upstream MIT license notice.
+- Passed live Steam gameplay regression and fail-closed host testing.
+- Accepted by Nexus Mods without the suspicious-file warning shown on the legacy launcher package.
+
 ## 1.2.0 — 2026-08-17
 
 - Added a configurable walk/jog shortcut in the launcher, with `X` retained as the default.
