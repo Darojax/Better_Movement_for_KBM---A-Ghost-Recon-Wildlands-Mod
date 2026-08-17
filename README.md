@@ -4,9 +4,9 @@
 
 Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in *Tom Clancy's Ghost Recon Wildlands*.
 
-Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Standing, crouched, and Aim-Down-Sight movement speeds are adjusted to feel more consistent.
+Scroll the mouse wheel to select movement speed, whether moving or standing still, and transition naturally from a very slow walk to a full jog. Standing, crouched, and Aim-Down-Sight movement speeds are adjusted to feel more consistent.
 
-> **Current release:** `2.0.0`, for game version `133.1.0.9840374` / Steam build `24669148`.
+> **Current release:** `2.0.1`, for game version `133.1.0.9840374` / Steam build `24669148`.
 
 ## Features
 

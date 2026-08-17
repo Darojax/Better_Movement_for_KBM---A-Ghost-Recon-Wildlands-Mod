@@ -1,9 +1,10 @@
-BETTER MOVEMENT FOR KBM v2.0.0
+BETTER MOVEMENT FOR KBM v2.0.1
 ==============================
 
 Better Movement for KBM adds smooth, granular movement-speed control for
 mouse-and-keyboard players in Ghost Recon Wildlands. Scroll the mouse wheel
-while moving to move between very slow walking and full jogging speed.
+to move between very slow walking and full jogging speed, whether moving or
+standing still.
 
 The mod also adjusts standing and crouched Aim-Down-Sight movement to better
 match normal movement. The game's normal Walk/Jog binding remains available,
@@ -33,7 +34,8 @@ required.
 CONTROLS
 --------
 
-- Scroll the mouse wheel while moving to adjust movement speed.
+- Scroll the mouse wheel to adjust movement speed. Changes made while standing
+  still apply when movement begins.
 - Use the Walk/Jog key configured inside Ghost Recon Wildlands to jump to the
   opposite vanilla movement range.
 - Sprint normally to return to full jogging speed.

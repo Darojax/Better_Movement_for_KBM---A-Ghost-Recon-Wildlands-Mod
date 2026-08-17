@@ -39,6 +39,8 @@ constexpr float kStandingAdsCap = 3.40f;
 constexpr float kCrouchWalkAdsMinimum = 0.84f;
 constexpr float kCrouchWalkAdsMaximum = 1.68f;
 constexpr float kCrouchJogAds = 2.70f;
+constexpr ULONGLONG kWheelGaitRebaseWindowMs = 250;
+constexpr int kModeChangeConfirmationSamples = 1;
 
 struct RuntimeLayout
 {
@@ -83,8 +85,12 @@ struct RuntimeState
     int currentLevel{kJogMaximumLevel};
     float selectedScale{1.0f};
     float lastRawMagnitude{};
+    ULONGLONG lastWheelAdjustmentTick{};
+    bool pendingModeJog{};
+    int pendingModeSamples{};
     bool lastModeJog{true};
     bool modeKnown{};
+    bool stationaryLevelPending{};
     bool shiftBypass{};
     bool adsHeld{};
     bool adsOverrideEnabled{};
@@ -250,6 +256,12 @@ bool CurrentModeIsJog()
     return g_state.lastModeJog;
 }
 
+void ResetModeChangeCandidate()
+{
+    g_state.pendingModeJog = g_state.lastModeJog;
+    g_state.pendingModeSamples = 0;
+}
+
 template<typename T>
 bool TryReadValue(std::uintptr_t address, T& value)
 {
@@ -295,7 +307,12 @@ bool EnsureModeKnown()
     if (!IsMoving()) return false;
     g_state.lastModeJog = CurrentModeIsJog();
     g_state.modeKnown = true;
-    g_state.currentLevel = g_state.lastModeJog ? kJogMaximumLevel : kVanillaWalkLevel;
+    if (!g_state.stationaryLevelPending)
+        g_state.currentLevel = g_state.lastModeJog ? kJogMaximumLevel : kVanillaWalkLevel;
+    else
+        g_state.lastWheelAdjustmentTick = GetTickCount64();
+    g_state.stationaryLevelPending = false;
+    ResetModeChangeCandidate();
     ApplyCurrentLevel();
     return true;
 }
@@ -308,15 +325,27 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam)
         const short delta = static_cast<short>(HIWORD(mouse->mouseData));
         if (delta != 0)
         {
-            if (IsMoving() && !g_state.shiftBypass && (GetAsyncKeyState(VK_SHIFT) & 0x8000) == 0 && EnsureModeKnown())
+            if (!g_state.shiftBypass && (GetAsyncKeyState(VK_SHIFT) & 0x8000) == 0)
             {
+                const bool moving = IsMoving();
+                if (moving && !EnsureModeKnown()) return 1;
                 const int direction = delta > 0 ? 1 : -1;
                 const int next = std::clamp(g_state.currentLevel + direction, 0, static_cast<int>(kTargets.size()) - 1);
                 if (next != g_state.currentLevel)
                 {
                     g_state.currentLevel = next;
-                    ApplyCurrentLevel();
-                    if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) SetAdsOverrideEnabled(true);
+                    g_state.lastWheelAdjustmentTick = GetTickCount64();
+                    ResetModeChangeCandidate();
+                    if (moving)
+                    {
+                        g_state.stationaryLevelPending = false;
+                        ApplyCurrentLevel();
+                        if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) SetAdsOverrideEnabled(true);
+                    }
+                    else
+                    {
+                        g_state.stationaryLevelPending = true;
+                    }
                 }
             }
             return 1;
@@ -349,25 +378,62 @@ void PollGameplayState()
         g_state.currentLevel = kJogMaximumLevel;
         g_state.lastModeJog = true;
         g_state.modeKnown = true;
+        ResetModeChangeCandidate();
         ApplyCurrentLevel();
         return;
     }
 
     if (!moving)
     {
+        ResetModeChangeCandidate();
         SetAdsOverrideEnabled(false);
         g_state.adsHeld = false;
         return;
     }
     if (!EnsureModeKnown()) return;
+    if (g_state.stationaryLevelPending)
+    {
+        g_state.stationaryLevelPending = false;
+        g_state.lastWheelAdjustmentTick = GetTickCount64();
+        ResetModeChangeCandidate();
+        ApplyCurrentLevel();
+    }
     RefreshCrouchState();
     const bool observedJog = CurrentModeIsJog();
-    if (observedJog != g_state.lastModeJog)
+    if (observedJog == g_state.lastModeJog)
     {
-        const bool targetJog = !LevelIsJog(g_state.currentLevel);
+        ResetModeChangeCandidate();
+    }
+    else if (GetTickCount64() - g_state.lastWheelAdjustmentTick <= kWheelGaitRebaseWindowMs)
+    {
+        // At very low speeds Wildlands may change its native gait in response to
+        // the scale we just applied. Preserve the selected wheel level and rebase
+        // its multiplier instead of mistaking that transition for a user toggle.
+        const ULONGLONG now = GetTickCount64();
         g_state.lastModeJog = observedJog;
-        g_state.currentLevel = targetJog ? kJogMaximumLevel : kVanillaWalkLevel;
+        g_state.lastWheelAdjustmentTick = now;
+        ResetModeChangeCandidate();
         ApplyCurrentLevel();
+    }
+    else
+    {
+        if (g_state.pendingModeSamples == 0 || g_state.pendingModeJog != observedJog)
+        {
+            g_state.pendingModeJog = observedJog;
+            g_state.pendingModeSamples = 1;
+        }
+        else
+        {
+            ++g_state.pendingModeSamples;
+        }
+        if (g_state.pendingModeSamples >= kModeChangeConfirmationSamples)
+        {
+            const bool targetJog = !LevelIsJog(g_state.currentLevel);
+            g_state.lastModeJog = observedJog;
+            g_state.currentLevel = targetJog ? kJogMaximumLevel : kVanillaWalkLevel;
+            ResetModeChangeCandidate();
+            ApplyCurrentLevel();
+        }
     }
 
     const bool adsNow = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;

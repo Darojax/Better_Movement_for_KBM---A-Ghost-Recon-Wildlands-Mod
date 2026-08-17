@@ -1,6 +1,6 @@
 # Better Movement for KBM — native ASI runtime
 
-This project builds the native x64 runtime used by Better Movement for KBM v2.0.
+This project builds the native x64 runtime used by Better Movement for KBM v2.0.1.
 
 The release targets Ghost Recon Wildlands game version `133.1.0.9840374` / Steam build `24669148`. Before changing anything, the ASI verifies every required instruction against that exact executable layout. Unsupported builds are left untouched.
 

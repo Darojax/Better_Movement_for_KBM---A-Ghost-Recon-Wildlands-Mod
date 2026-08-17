@@ -2,9 +2,9 @@
 
 Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in Ghost Recon Wildlands—similar to the analogue movement available with a gamepad.
 
-Scroll the mouse wheel while moving to transition naturally between a very slow walk and full jogging speed. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent with normal movement.
+Scroll the mouse wheel to transition naturally between a very slow walk and full jogging speed. Selections made while standing still apply when movement begins. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent with normal movement.
 
-Version 2.0.0 is a lightweight native ASI mod. It requires no launcher, configuration file, .NET runtime, firewall rules, or SayNoToEAC installation.
+Version 2.0.1 is a lightweight native ASI mod. It requires no launcher, configuration file, .NET runtime, firewall rules, or SayNoToEAC installation.
 
 [heading][color=#93c47d]Requirements[/color][/heading]
 
@@ -32,7 +32,7 @@ The mod loads automatically with the game. [b]Do not use the legacy Launcher Edi
 Before playing, open [b]Settings → Key Mapping → Player Combat[/b] and reassign [b]Next Weapon[/b] and [b]Previous Weapon[/b] away from Mouse Wheel Up and Mouse Wheel Down. Keys 1, 2, and 3 remain available for direct weapon selection.
 
 [list]
-[*][b]Mouse wheel while moving:[/b] Adjust movement speed.[/*]
+[*][b]Mouse wheel:[/b] Adjust movement speed while moving or select the next speed while standing still.[/*]
 [*][b]Your configured Walk/Jog key:[/b] Switch immediately to the opposite vanilla movement range.[/*]
 [*][b]Sprint:[/b] Sprint normally; releasing it restores full jogging speed.[/*]
 [*][b]Mouse wheel while aiming:[/b] Continue adjusting the underlying movement speed.[/*]
