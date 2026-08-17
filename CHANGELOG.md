@@ -2,6 +2,12 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
+## 1.2.0 — 2026-08-17
+
+- Added a configurable walk/jog shortcut in the launcher, with `X` retained as the default.
+- Added an option to disable the walk/jog shortcut completely.
+- Shortcut changes now apply to an active gameplay session without restarting or reattaching the mod.
+
 ## 1.1.0 — 2026-08-14
 
 - Added verified compatibility with game version `133.1.0.9840374` / Steam build `24669148` for both Steam and Ubisoft Connect.

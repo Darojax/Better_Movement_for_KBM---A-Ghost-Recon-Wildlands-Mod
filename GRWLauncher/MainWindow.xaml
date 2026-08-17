@@ -109,7 +109,7 @@
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                         <Image Source="Assets/better_movement_for_kbm_logo_small_and_trimmed.png" Width="301" Height="49"
                                Stretch="Uniform" VerticalAlignment="Bottom" />
-                        <TextBlock Text="v1.1 - by Codex and Darojax" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
+                        <TextBlock Text="v1.2 - by Codex and Darojax" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
                                    Margin="10,0,0,6" VerticalAlignment="Bottom" />
                     </StackPanel>
                 </StackPanel>
@@ -127,19 +127,29 @@
                         <TextBlock Text="{Binding Headline}" FontSize="19" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding Summary}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
                     </StackPanel>
-                    <Button Grid.Column="2" Click="ShowCautionPanelButton_Click"
-                            Style="{StaticResource SecondaryButton}" Margin="14,0,0,0" VerticalAlignment="Center"
-                            ToolTip="Read the setup, controls, firewall, and account-risk information before using the mod">
-                        <StackPanel Orientation="Horizontal">
-                            <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource WarningBrush}" Margin="0,0,8,0">
-                                <TextBlock Text="!" Foreground="#111510" FontSize="13" FontWeight="Bold"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock.RenderTransform><TranslateTransform Y="-1" /></TextBlock.RenderTransform>
-                                </TextBlock>
-                            </Border>
-                            <TextBlock Text="Usage &amp; Risks" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <Button Click="ShowControlsPanelButton_Click" Style="{StaticResource SecondaryButton}"
+                                AutomationProperties.Name="Controls"
+                                ToolTip="Configure movement controls" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Controls" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Click="ShowCautionPanelButton_Click" Style="{StaticResource SecondaryButton}"
+                                AutomationProperties.Name="Usage &amp; Risks"
+                                ToolTip="Read the setup, controls, firewall, and account-risk information before using the mod">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource WarningBrush}" Margin="0,0,8,0">
+                                    <TextBlock Text="!" Foreground="#111510" FontSize="13" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock.RenderTransform><TranslateTransform Y="-1" /></TextBlock.RenderTransform>
+                                    </TextBlock>
+                                </Border>
+                                <TextBlock Text="Usage &amp; Risks" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -688,6 +698,64 @@
                 </Border>
             </Grid>
 
+            <Grid x:Name="ControlsOverlay" Grid.RowSpan="2" Panel.ZIndex="111" Background="#A6000000"
+                  Visibility="Collapsed" Focusable="True">
+                <Border Width="620" Height="330" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{StaticResource WindowBrush}" BorderBrush="#465246" BorderThickness="1" CornerRadius="0">
+                    <Grid Margin="28,24,28,24">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="MOVEMENT CONTROLS" Foreground="{StaticResource AccentBrush}" FontSize="12" FontWeight="Bold" />
+                            <TextBlock Text="Walk/jog shortcut" FontSize="21" FontWeight="SemiBold" Margin="0,6,0,0" />
+                            <TextBlock Text="This shortcut jumps directly to the opposite vanilla walk or jog speed. The selected key is reserved by the mod while Ghost Recon Wildlands is focused."
+                                       Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,7,0,0" />
+                        </StackPanel>
+
+                        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="5" Padding="14,12" Margin="0,20,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Current shortcut" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBlock x:Name="WalkJogShortcutValue" Text="X" Foreground="{StaticResource ReadyBrush}"
+                                               FontSize="16" FontWeight="Bold" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="CaptureWalkJogShortcutButton" Content="Change key…"
+                                            Click="CaptureWalkJogShortcutButton_Click" Style="{StaticResource SecondaryButton}" />
+                                    <Button x:Name="DisableWalkJogShortcutButton" Content="Disable"
+                                            Click="DisableWalkJogShortcutButton_Click" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock x:Name="WalkJogShortcutStatus" Grid.Row="2" Foreground="{StaticResource MutedTextBrush}"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0" />
+
+                        <Grid Grid.Row="3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Content="Reset to X" Click="ResetWalkJogShortcutButton_Click"
+                                    Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" />
+                            <Button Grid.Column="2" Content="Close" Click="CloseControlsPanelButton_Click"
+                                    Style="{StaticResource PrimaryButton}" MinWidth="92" HorizontalAlignment="Right" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
             <Grid x:Name="CautionOverlay" Grid.RowSpan="2" Panel.ZIndex="110" Background="#A6000000"
                   Visibility="Collapsed" Focusable="True">
                 <Border Width="1020" Height="744" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -739,7 +807,7 @@
                                            Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Justify" Margin="0,3,0,10" />
 
                                 <TextBlock Text="Using Better Movement for KBM" FontSize="13" FontWeight="SemiBold" />
-                                <TextBlock Text="Resolve all red blocked items and create a current save backup. It is also strongly recommended to resolve any remaining Caution items. Then use the adaptive green button to launch with Better Movement for KBM, enable it in an already running game, disable it while active, or cancel a pending launch. Keep the launcher open in the background while playing. Scroll while moving to adjust speed; the normal walk/jog toggle remains available, and sprinting restores full jogging speed."
+                                <TextBlock Text="Resolve all red blocked items and create a current save backup. It is also strongly recommended to resolve any remaining Caution items. Use Controls to change or disable the walk/jog shortcut, which defaults to X. Then use the adaptive green button to launch with Better Movement for KBM, enable it in an already running game, disable it while active, or cancel a pending launch. Keep the launcher open in the background while playing. Scroll while moving to adjust speed; sprinting restores full jogging speed."
                                            Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Justify" Margin="0,3,0,0" />
                             </StackPanel>
 

@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private GameInstallation? _saveInstallation;
     private TaskCompletionSource? _savePanelCompletion;
     private bool? _savePanelGameRunning;
+    private bool _capturingWalkJogShortcut;
 
     public MainWindow()
     {
@@ -89,6 +90,17 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (ControlsOverlay.Visibility == Visibility.Visible && _capturingWalkJogShortcut)
+        {
+            CaptureWalkJogShortcut(e);
+            return;
+        }
+        if (ControlsOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            CloseControlsPanel();
+            e.Handled = true;
+            return;
+        }
         if (CleanupFinalOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
         {
             CloseFinalCleanupConfirmation();
@@ -173,6 +185,114 @@ public partial class MainWindow : Window
     }
 
     private Brush FindBrush(string key) => (Brush)FindResource(key);
+
+    private void ShowControlsPanelButton_Click(object sender, RoutedEventArgs e)
+    {
+        _capturingWalkJogShortcut = false;
+        RefreshWalkJogShortcutPanel();
+        LauncherTitleBar.IsEnabled = false;
+        LauncherBody.IsEnabled = false;
+        ControlsOverlay.IsHitTestVisible = true;
+        ControlsOverlay.Opacity = 0;
+        ControlsOverlay.Visibility = Visibility.Visible;
+        ControlsOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(110)));
+        ControlsOverlay.Focus();
+    }
+
+    private void CaptureWalkJogShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        _capturingWalkJogShortcut = true;
+        CaptureWalkJogShortcutButton.Content = "Press a key…";
+        WalkJogShortcutStatus.Text = "Press the desired keyboard key. Press Escape to cancel.";
+        ControlsOverlay.Focus();
+    }
+
+    private void CaptureWalkJogShortcut(KeyEventArgs e)
+    {
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+        e.Handled = true;
+        if (key == Key.Escape)
+        {
+            _capturingWalkJogShortcut = false;
+            RefreshWalkJogShortcutPanel("Shortcut change cancelled.");
+            return;
+        }
+
+        if (key is Key.None or Key.System or Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
+            or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin || key == Key.F4)
+        {
+            WalkJogShortcutStatus.Text = "That key is reserved by Windows or by Better Movement for KBM. Choose another key.";
+            return;
+        }
+
+        int virtualKey = KeyInterop.VirtualKeyFromKey(key);
+        if (virtualKey is <= 0 or > 0xFF)
+        {
+            WalkJogShortcutStatus.Text = "That key cannot be used. Choose another key.";
+            return;
+        }
+
+        if (!WalkJogShortcutStore.TrySave(new WalkJogShortcut(virtualKey)))
+        {
+            WalkJogShortcutStatus.Text = "The shortcut could not be saved. Check that the launcher can write to your local application-data folder.";
+            return;
+        }
+        _capturingWalkJogShortcut = false;
+        RefreshWalkJogShortcutPanel($"Shortcut saved as {WalkJogShortcutStore.Load().DisplayName}.");
+    }
+
+    private void DisableWalkJogShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WalkJogShortcutStore.TrySave(new WalkJogShortcut(null)))
+        {
+            WalkJogShortcutStatus.Text = "The shortcut could not be saved. Check that the launcher can write to your local application-data folder.";
+            return;
+        }
+        _capturingWalkJogShortcut = false;
+        RefreshWalkJogShortcutPanel("The walk/jog shortcut is disabled.");
+    }
+
+    private void ResetWalkJogShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WalkJogShortcutStore.TrySave(WalkJogShortcut.Default))
+        {
+            WalkJogShortcutStatus.Text = "The shortcut could not be saved. Check that the launcher can write to your local application-data folder.";
+            return;
+        }
+        _capturingWalkJogShortcut = false;
+        RefreshWalkJogShortcutPanel("The walk/jog shortcut was reset to X.");
+    }
+
+    private void RefreshWalkJogShortcutPanel(string? status = null)
+    {
+        WalkJogShortcut shortcut = WalkJogShortcutStore.Load();
+        WalkJogShortcutValue.Text = shortcut.DisplayName;
+        WalkJogShortcutValue.Foreground = FindBrush(shortcut.IsEnabled ? "ReadyBrush" : "MutedTextBrush");
+        CaptureWalkJogShortcutButton.Content = "Change key…";
+        DisableWalkJogShortcutButton.IsEnabled = shortcut.IsEnabled;
+        WalkJogShortcutStatus.Text = status ?? (_viewModel.RuntimeActive
+            ? "Changes apply to the running mod automatically."
+            : "");
+    }
+
+    private void CloseControlsPanelButton_Click(object sender, RoutedEventArgs e) => CloseControlsPanel();
+
+    private void CloseControlsPanel()
+    {
+        if (!ControlsOverlay.IsHitTestVisible || ControlsOverlay.Visibility != Visibility.Visible) return;
+        _capturingWalkJogShortcut = false;
+        ControlsOverlay.IsHitTestVisible = false;
+        DoubleAnimation fade = new(0, TimeSpan.FromMilliseconds(90));
+        fade.Completed += (_, _) =>
+        {
+            ControlsOverlay.Visibility = Visibility.Collapsed;
+            ControlsOverlay.BeginAnimation(OpacityProperty, null);
+            ControlsOverlay.Opacity = 1;
+            LauncherTitleBar.IsEnabled = true;
+            LauncherBody.IsEnabled = true;
+        };
+        ControlsOverlay.BeginAnimation(OpacityProperty, fade);
+    }
 
     private void RestoreWindowPosition()
     {

@@ -36,6 +36,7 @@
 *.user
 *.userosscache
 *.sln.docstates
+/TODO.md
 
 # Temporary files
 *.tmp

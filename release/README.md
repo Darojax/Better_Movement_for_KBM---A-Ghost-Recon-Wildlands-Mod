@@ -29,7 +29,7 @@ Keep the launcher open while playing. Its green button adapts automatically and 
 ## Controls
 
 - Mouse wheel while moving: adjust movement speed.
-- `X`: immediately switch to the opposite vanilla walk/jog speed.
+- Configurable walk/jog shortcut (`X` by default): immediately switch to the opposite vanilla walk/jog speed. Use **Controls** in the launcher to change or disable it, including while the mod is running.
 - Sprint/Shift: sprint normally; releasing it returns to full jogging speed.
 
 ## If the game cannot start

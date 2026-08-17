@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using GRWBetterMovementLauncher.Models;
 
@@ -7,6 +9,7 @@ namespace GRWBetterMovementLauncher.Services;
 
 public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
 {
+    private const uint RuntimeProcessAccess = 0x0008 | 0x0010 | 0x0020 | 0x0400;
     private const string LegacyExecutableHash = "56791FF5A6C213A77EEBEDAEAEE3026D63B70806071358CE96ABD3ED7947ADE7";
     private const string CurrentExecutableHash = "4B222677C5068D40104144AF79F0E31FDC4D62D1A48F6BA07BC70B4EE167E56E";
     private const string LegacySteamBuild = "24446260";
@@ -266,45 +269,66 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         string eventName = $"Local\\BetterMovement-{Environment.ProcessId}-{Guid.NewGuid():N}";
         _shutdownEvent = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
         _runtimeFailure = "";
+        bool elevateRuntime = RuntimeRequiresElevation(gameProcessId);
 
         progress.Report("Verifying exact movement and ADS instructions…");
         ProcessStartInfo start = new(runtime)
         {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            Arguments = $"--pid={gameProcessId} --shutdown-event={Quote(eventName)}"
+            Arguments = $"--pid={gameProcessId} --shutdown-event={Quote(eventName)} {BuildWalkJogShortcutArgument()}"
         };
+        if (elevateRuntime)
+        {
+            progress.Report("Ghost Recon Wildlands is running elevated. Administrator approval is required for the movement runtime…");
+            start.UseShellExecute = true;
+            start.Verb = "runas";
+            start.WindowStyle = ProcessWindowStyle.Hidden;
+        }
+        else
+        {
+            start.UseShellExecute = false;
+            start.CreateNoWindow = true;
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+        }
         Process runtimeProcess = new() { StartInfo = start, EnableRaisingEvents = true };
         bool runtimeStarted = false;
         _runtimeProcess = runtimeProcess;
         _runtimeStarting = true;
         try
         {
-            runtimeProcess.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data) && e.Data.Contains("Verified movement", StringComparison.OrdinalIgnoreCase)) progress.Report("Movement runtime attached successfully."); };
-            runtimeProcess.ErrorDataReceived += (_, e) =>
+            if (!elevateRuntime)
             {
-                if (!string.IsNullOrWhiteSpace(e.Data))
-                    _runtimeFailure = string.IsNullOrWhiteSpace(_runtimeFailure) ? e.Data : $"{_runtimeFailure}{Environment.NewLine}{e.Data}";
-            };
+                runtimeProcess.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data) && e.Data.Contains("Verified movement", StringComparison.OrdinalIgnoreCase)) progress.Report("Movement runtime attached successfully."); };
+                runtimeProcess.ErrorDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Data))
+                        _runtimeFailure = string.IsNullOrWhiteSpace(_runtimeFailure) ? e.Data : $"{_runtimeFailure}{Environment.NewLine}{e.Data}";
+                };
+            }
             if (!runtimeProcess.Start()) throw new InvalidOperationException("Could not start the movement runtime.");
             runtimeStarted = true;
-            runtimeProcess.BeginOutputReadLine();
-            runtimeProcess.BeginErrorReadLine();
+            if (!elevateRuntime)
+            {
+                runtimeProcess.BeginOutputReadLine();
+                runtimeProcess.BeginErrorReadLine();
+            }
             await Task.Delay(3000, cancellationToken);
             if (runtimeProcess.HasExited)
             {
                 int exitCode = runtimeProcess.ExitCode;
                 string failure = string.IsNullOrWhiteSpace(_runtimeFailure)
                     ? $"Runtime exited with code {exitCode}."
-                    : _runtimeFailure.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault(line => !line.TrimStart().StartsWith("at ", StringComparison.Ordinal)) ?? _runtimeFailure;
+                    : SummarizeRuntimeFailure(_runtimeFailure);
                 DisposeRuntimeHandles();
                 if (exitCode == 0) throw new RuntimeStartupInterruptedException();
                 throw new InvalidOperationException(failure);
             }
             progress.Report("Better Movement for KBM is active.");
+        }
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
+        {
+            if (ReferenceEquals(_runtimeProcess, runtimeProcess)) DisposeRuntimeHandles();
+            throw new OperationCanceledException("Administrator approval for the movement runtime was cancelled.", exception, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -331,6 +355,36 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         {
             _runtimeStarting = false;
         }
+    }
+
+    private static string BuildWalkJogShortcutArgument()
+    {
+        WalkJogShortcut shortcut = WalkJogShortcutStore.Load();
+        string initialValue = shortcut.VirtualKey is int virtualKey
+            ? $"--walk-toggle-vk={virtualKey}"
+            : "--walk-toggle-vk=disabled";
+        return $"{initialValue} --walk-toggle-file={Quote(WalkJogShortcutStore.FilePath)}";
+    }
+
+    private static bool RuntimeRequiresElevation(int gameProcessId)
+    {
+        nint process = OpenProcess(RuntimeProcessAccess, false, gameProcessId);
+        if (process != 0)
+        {
+            CloseHandle(process);
+            return false;
+        }
+        return Marshal.GetLastWin32Error() == 5;
+    }
+
+    private static string SummarizeRuntimeFailure(string failure)
+    {
+        string firstLine = failure.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(line => !line.TrimStart().StartsWith("at ", StringComparison.Ordinal))?.Trim() ?? failure.Trim();
+        const string unhandledPrefix = "Unhandled exception. ";
+        if (!firstLine.StartsWith(unhandledPrefix, StringComparison.Ordinal)) return firstLine;
+        int messageStart = firstLine.IndexOf("): ", StringComparison.Ordinal);
+        return messageStart >= 0 ? firstLine[(messageStart + 3)..] : firstLine[unhandledPrefix.Length..];
     }
 
     private static void LaunchGame(GameInstallation installation)
@@ -605,12 +659,35 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
         int? gameProcessId = FindSelectedGameProcessId(_installation!.Executable);
         if (gameProcessId is null) return "Ghost Recon Wildlands is not running; exact hook instructions will be verified at attachment.";
         string runtime = ResolveRuntimeExecutable();
-        ProcessStartInfo start = new(runtime, $"--pid={gameProcessId.Value} --verify") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the verifier.");
-        string output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        string error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        bool elevateRuntime = RuntimeRequiresElevation(gameProcessId.Value);
+        ProcessStartInfo start = new(runtime, $"--pid={gameProcessId.Value} --verify");
+        if (elevateRuntime)
+        {
+            start.UseShellExecute = true;
+            start.Verb = "runas";
+            start.WindowStyle = ProcessWindowStyle.Hidden;
+        }
+        else
+        {
+            start.UseShellExecute = false;
+            start.CreateNoWindow = true;
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+        }
+        Process? startedProcess;
+        try { startedProcess = Process.Start(start); }
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
+        {
+            throw new OperationCanceledException("Administrator approval for verification was cancelled.", exception, cancellationToken);
+        }
+        using Process process = startedProcess ?? throw new InvalidOperationException("Could not start the verifier.");
+        string output = elevateRuntime ? "" : await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        string error = elevateRuntime ? "" : await process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
-        if (process.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? output.Trim() : error.Trim());
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(elevateRuntime
+                ? $"Verification runtime exited with code {process.ExitCode}."
+                : string.IsNullOrWhiteSpace(error) ? output.Trim() : SummarizeRuntimeFailure(error));
         return "All exact original movement and ADS instructions were verified.";
     }
 
@@ -698,6 +775,12 @@ public sealed class ProductionLauncherBackend : ILauncherBackend, IDisposable
     }
 
     private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint OpenProcess(uint desiredAccess, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(nint handle);
 
     private sealed record ProcessState(bool GameRunning, int[] RuntimeProcessIds, string[] EacProcesses);
 

@@ -17,7 +17,7 @@ const uint WmSpeedWheel = 0x8001;
 const uint WmKeyDown = 0x0100, WmKeyUp = 0x0101, WmSysKeyDown = 0x0104, WmSysKeyUp = 0x0105;
 const int VkShift = 0x10, VkLShift = 0xA0, VkRShift = 0xA1;
 const int VkRightButton = 0x02;
-const int VkWalkJogToggle = 0x58;
+const int DefaultVkWalkJogToggle = 0x58;
 const float WalkMinimumScale = 1.0f / 7.0f, WalkMaximumScale = 12.0f / 7.0f;
 const float JogMinimumScale = 0.70f, JogMaximumScale = 1.00f, JogStepScale = 0.03f;
 const int WalkLevelCount = 16, JogLevelCount = 11;
@@ -53,6 +53,13 @@ bool calibrationMode = args.Contains("--calibrate", StringComparer.OrdinalIgnore
 bool adsCalibrationMode = args.Contains("--ads-calibrate", StringComparer.OrdinalIgnoreCase);
 bool weaponAdsProbeMode = args.Contains("--weapon-ads-probe", StringComparer.OrdinalIgnoreCase);
 bool verbose = args.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
+string? walkToggleArgument = args.FirstOrDefault(argument => argument.StartsWith("--walk-toggle-vk=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1];
+int? walkJogToggleVirtualKey = walkToggleArgument?.Equals("disabled", StringComparison.OrdinalIgnoreCase) == true
+    ? null
+    : int.TryParse(walkToggleArgument, out int configuredWalkToggle) && configuredWalkToggle is > 0 and <= 0xFF
+        ? configuredWalkToggle
+        : DefaultVkWalkJogToggle;
+string? walkToggleFile = args.FirstOrDefault(argument => argument.StartsWith("--walk-toggle-file=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1].Trim('"');
 string? shutdownEventName = args.FirstOrDefault(argument => argument.StartsWith("--shutdown-event=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1].Trim('"');
 using EventWaitHandle? shutdownEvent = shutdownEventName is null ? null : EventWaitHandle.OpenExisting(shutdownEventName);
 if (new[] { calibrationMode, adsCalibrationMode, weaponAdsProbeMode }.Count(enabled => enabled) > 1)
@@ -311,6 +318,33 @@ try
     bool crouched = false, stanceKnown = false;
     int weaponCaptureSequence = 0;
     string weaponCaptureDirectory = Path.Combine(AppContext.BaseDirectory, "weapon-probe-captures");
+    DateTime nextWalkToggleReloadUtc = DateTime.MinValue;
+    DateTime walkToggleFileWriteUtc = DateTime.MinValue;
+    void ReloadWalkJogShortcutIfChanged()
+    {
+        if (string.IsNullOrWhiteSpace(walkToggleFile) || DateTime.UtcNow < nextWalkToggleReloadUtc) return;
+        nextWalkToggleReloadUtc = DateTime.UtcNow.AddMilliseconds(250);
+        try
+        {
+            if (!File.Exists(walkToggleFile)) return;
+            DateTime writeTimeUtc = File.GetLastWriteTimeUtc(walkToggleFile);
+            if (writeTimeUtc == walkToggleFileWriteUtc) return;
+            walkToggleFileWriteUtc = writeTimeUtc;
+            string value = File.ReadAllText(walkToggleFile).Trim();
+            int? updatedVirtualKey;
+            if (value.Equals("disabled", StringComparison.OrdinalIgnoreCase)) updatedVirtualKey = null;
+            else if (int.TryParse(value, out int parsedVirtualKey) && parsedVirtualKey is > 0 and <= 0xFF) updatedVirtualKey = parsedVirtualKey;
+            else return;
+            if (updatedVirtualKey == walkJogToggleVirtualKey) return;
+            walkJogToggleVirtualKey = updatedVirtualKey;
+            walkJogKeyDown = false;
+            Console.WriteLine(updatedVirtualKey is null
+                ? "Walk/jog shortcut disabled while running."
+                : $"Walk/jog shortcut changed while running to VK 0x{updatedVirtualKey.Value:X2}.");
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
     (ulong Owner, ulong StateObject, byte Primary, byte Mirror) ReadStanceCandidates()
     {
         ulong owner = BitConverter.ToUInt64(ReadExact(process, cave + ProbeOwnerOffset, 8));
@@ -507,7 +541,7 @@ try
             bool keyUp = message is WmKeyUp or WmSysKeyUp;
             try
             {
-                if (key == VkWalkJogToggle && IsGameForeground())
+                if (walkJogToggleVirtualKey is int walkJogKey && key == walkJogKey && IsGameForeground())
                 {
                     if (keyDown)
                     {
@@ -520,9 +554,9 @@ try
                                 bool targetJog = !LevelIsJog(currentLevelIndex);
                                 currentLevelIndex = targetJog ? JogMaximumLevelIndex : VanillaWalkLevelIndex;
                                 ApplyCurrentLevel();
-                                PrintLiveLevel("X anchor");
+                                PrintLiveLevel("Walk/jog anchor");
                                 if (adsHeld || IsAdsHeld()) SetAdsOverrideEnabled(true);
-                                Console.WriteLine($"X: selected vanilla {(targetJog ? "jog" : "walk")} speed.");
+                                Console.WriteLine($"Walk/jog shortcut: selected vanilla {(targetJog ? "jog" : "walk")} speed.");
                             }
                             return 1; // emulate the visible toggle without changing Wildlands' hidden gait state
                         }
@@ -567,7 +601,9 @@ try
         : adsCalibrationMode
             ? $"ADS CALIBRATION: global jog-ADS starts at {JogAdsMaximum:0.00}; F6 lowers 0.10, F7 raises 0.10, F8 records the preferred value."
             : $"Unified ladder: {WalkLevelCount} walk positions from 0.05-0.60 and {JogLevelCount} jog positions from 0.70-1.00; the wheel crosses both ranges automatically.");
-    Console.WriteLine("X jumps from the current range to the opposite vanilla gait; no separate custom profiles are saved.");
+    Console.WriteLine(walkJogToggleVirtualKey is null
+        ? "The walk/jog shortcut is disabled."
+        : $"Walk/jog shortcut VK 0x{walkJogToggleVirtualKey.Value:X2} jumps to the opposite vanilla gait; no separate custom profiles are saved.");
     Console.WriteLine("Shift bypasses scaling for sprint; release returns to vanilla full jog.");
     Console.WriteLine("F4 resets the current range to its vanilla anchor.");
     if (weaponAdsProbeMode) Console.WriteLine("WEAPON ADS PROBE: while holding ADS and moving, F6 captures Stoner and F7 captures pistol.");
@@ -598,6 +634,7 @@ try
             Console.WriteLine("Launcher requested a clean runtime shutdown.");
             break;
         }
+        if (message.Message == WmTimer) ReloadWalkJogShortcutIfChanged();
         if (message.Message == WmTimer && !shiftBypass)
         {
             if (game.HasExited) break;

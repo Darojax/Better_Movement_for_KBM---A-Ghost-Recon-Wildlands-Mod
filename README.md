@@ -6,12 +6,12 @@ Better Movement for KBM is a Windows mod that gives mouse-and-keyboard players s
 
 Scroll the mouse wheel while moving to transition naturally from a very slow walk to a full jog. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent.
 
-> **Current release:** `1.1.0`, compatible with game version `133.1.0.9840374` / Steam build `24669148` and the previous verified build.
+> **Current release:** `1.2.0`, compatible with game version `133.1.0.9840374` / Steam build `24669148` and the previous verified build.
 
 ## Features
 
 - One continuous mouse-wheel range from slow walking to full jogging.
-- Native `X` walk/jog shortcut and normal sprint behavior remain available.
+- Configurable walk/jog shortcut (`X` by default, or disabled) and normal sprint behavior remain available.
 - Adjusted standing, crouched, and Aim-Down-Sight movement.
 - Portable launcher supporting Steam and Ubisoft Connect installations.
 - Live compatibility, anti-cheat, runtime, firewall, and save-backup checks that adapt to the selected game build.

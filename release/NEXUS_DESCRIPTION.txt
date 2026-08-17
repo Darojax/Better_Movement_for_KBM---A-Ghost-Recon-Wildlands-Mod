@@ -42,7 +42,7 @@ Before playing, open [b]Settings → Key Mapping → Player Combat[/b] and reass
 
 [list]
 [*][b]Mouse wheel while moving:[/b] Adjust movement speed.
-[*][b]X:[/b] Switch immediately to the opposite vanilla walk/jog speed.
+[*][b]Walk/jog shortcut:[/b] Switch immediately to the opposite vanilla walk/jog speed. It defaults to X and can be changed or disabled from [b]Controls[/b] in the launcher, including while the mod is running.
 [*][b]Shift:[/b] Sprint normally; releasing it returns to full jogging speed.
 [/list]
 
