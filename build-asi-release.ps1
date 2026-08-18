@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "2.0.1",
+    [string]$Version = "2.1.0",
     [string]$LoaderPath = ""
 )
 
@@ -11,6 +11,7 @@ $zipPath = Join-Path $artifactRoot "Better-Movement-for-KBM-v$Version-ASI.zip"
 $project = Join-Path $workspace "BetterMovementASI\BetterMovementASI.vcxproj"
 $asi = Join-Path $workspace "BetterMovementASI\bin\Release\x64\BetterMovementForKBM.asi"
 $readme = Join-Path $workspace "release\README.txt"
+$settings = Join-Path $workspace "release\BetterMovementForKBM.ini"
 $expectedLoaderHash = "031A3E5576D91DCE1E438D36B9A3D462C7334AB4791990A8FF1E3DDC0E132DAF"
 $loaderDownload = "https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/x64-latest/winmm-x64.zip"
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -51,6 +52,7 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 Copy-Item -LiteralPath $asi -Destination (Join-Path $packageRoot "BetterMovementForKBM.asi")
 Copy-Item -LiteralPath $loader -Destination (Join-Path $packageRoot "winmm.dll")
 Copy-Item -LiteralPath $readme -Destination (Join-Path $packageRoot "README.txt")
+Copy-Item -LiteralPath $settings -Destination (Join-Path $packageRoot "BetterMovementForKBM.ini")
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
