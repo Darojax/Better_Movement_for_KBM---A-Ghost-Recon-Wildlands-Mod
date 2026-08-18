@@ -2,6 +2,14 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
+## 2.1.1 - 2026-08-18
+
+- Added brief time-based acceleration and deceleration smoothing for wheel adjustments above sensitivity 50.
+- Preserved every calibrated movement destination and left sensitivity 50 and below unchanged.
+- Made repeated high-sensitivity wheel input retarget smoothly from the currently applied speed.
+- Prevented lagging game movement samples from being mistaken for native Walk/Jog changes during smoothed transitions.
+- Kept Walk/Jog switching, sprint restoration, and stationary speed selection immediate.
+
 ## 2.1.0 — 2026-08-18
 
 - Added live mouse-wheel movement-sensitivity adjustment from 0 to 100.

@@ -16,7 +16,7 @@ Unsupported or modified executables are left untouched.
 
 ## Runtime
 
-The runtime observes the game's native gait state, so the Walk/Jog binding configured in Wildlands remains authoritative. Mouse-wheel input selects the calibrated movement ladder, sprint restores full jogging speed, and the ADS redirect applies the standing and crouched calibration. Sensitivity scales wheel-step size without changing the selected speed or calibrated endpoints. A no-activate, click-through Windows overlay displays live sensitivity changes without hooking the renderer.
+The runtime observes the game's native gait state, so the Walk/Jog binding configured in Wildlands remains authoritative. Mouse-wheel input selects the calibrated movement ladder, sprint restores full jogging speed, and the ADS redirect applies the standing and crouched calibration. Sensitivity scales wheel-step size without changing the selected speed or calibrated endpoints. Above sensitivity 50, the selected destination updates immediately while a separate applied target follows it through a short time-based transition capped at roughly 160 ms across the full range; repeated wheel events redirect that transition from its current position. Gait inference is suspended while the game settles so delayed movement samples cannot cause false Walk/Jog rebases. Walk/Jog switching, sprint restoration, stationary selection, and sensitivity 50 or below bypass smoothing. A no-activate, click-through Windows overlay displays live sensitivity changes without hooking the renderer.
 
 The worker waits until Wildlands has remained in the foreground before installing its low-level mouse hook. All memory access is confined to the current `GRW.exe` process.
 

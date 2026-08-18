@@ -6,7 +6,7 @@ Better Movement for KBM gives mouse-and-keyboard players smooth, granular moveme
 
 Scroll the mouse wheel to select movement speed, whether moving or standing still, and transition naturally from a very slow walk to a full jog. Standing, crouched, and Aim-Down-Sight movement speeds are adjusted to feel more consistent.
 
-> **Current release:** `2.1.0`, for game version `133.1.0.9840374` / Steam build `24669148`.
+> **Current release:** `2.1.1`, for game version `133.1.0.9840374` / Steam build `24669148`.
 
 ## Features
 
@@ -15,14 +15,15 @@ Scroll the mouse wheel to select movement speed, whether moving or standing stil
 - Sprinting restores full jogging speed.
 - Calibrated standing, crouched, and Aim-Down-Sight movement.
 - Live, persistent mouse-wheel sensitivity adjustment with an on-screen slider.
+- Brief acceleration and deceleration smoothing above sensitivity 50, without changing calibrated destination speeds.
 - Configurable sensitivity shortcuts through a documented INI file.
 - Exact instruction verification before any game code is changed.
-- Native in-process ASI runtime with no launcher, configuration, or external process-memory access.
+- Native in-process ASI runtime with no launcher, configuration program, or external process-memory access.
 
 ## Installation
 
 1. Exit Ghost Recon Wildlands.
-2. Download and extract the v2.1 ASI package.
+2. Download and extract the current v2.1 ASI package.
 3. Copy `BetterMovementForKBM.asi`, `BetterMovementForKBM.ini`, and `winmm.dll` beside `GRW.exe`.
 4. Launch the game normally through Steam or Ubisoft Connect.
 

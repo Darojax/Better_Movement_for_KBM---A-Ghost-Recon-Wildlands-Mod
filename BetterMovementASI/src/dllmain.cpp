@@ -63,6 +63,10 @@ constexpr int kSensitivityOverlayHeight = 76;
 constexpr int kSensitivityOverlayTopOffset = 98;
 constexpr UINT_PTR kSensitivityOverlayTimerId = 2;
 constexpr UINT kSensitivityOverlayFrameMs = 16;
+constexpr UINT_PTR kTargetSmoothingTimerId = 3;
+constexpr UINT kTargetSmoothingFrameMs = 8;
+constexpr float kTargetSmoothingFullRangeMs = 160.0f;
+constexpr ULONGLONG kTargetSmoothingMaxElapsedMs = 32;
 constexpr wchar_t kSensitivityOverlayClassName[] = L"BetterMovementForKBMSensitivityOverlay";
 
 struct RuntimeLayout
@@ -101,11 +105,16 @@ struct RuntimeState
     float selectedScale{1.0f};
     float lastRawMagnitude{};
     ULONGLONG lastWheelAdjustmentTick{};
+    ULONGLONG gaitDetectionSuppressedUntil{};
     bool pendingModeJog{};
     int pendingModeSamples{};
     bool lastModeJog{true};
     bool modeKnown{};
     bool stationaryTargetPending{};
+    float appliedTarget{kMaximumJogTarget};
+    ULONGLONG smoothingLastTick{};
+    UINT_PTR smoothingTimer{};
+    bool smoothingActive{};
     bool shiftBypass{};
     bool adsHeld{};
     bool adsOverrideEnabled{};
@@ -551,27 +560,59 @@ float SensitivityScale()
     return std::pow(kMaximumSensitivityScale, position);
 }
 
-float AdvanceTarget(float target, int direction)
+float AdvanceWithinRange(float target, int direction, float minimum, float maximum,
+    float requestedStep)
 {
-    const float sensitivityScale = SensitivityScale();
+    const float length = maximum - minimum;
+    const int intervals = std::max(1, static_cast<int>(std::ceil(
+        length / requestedStep - kTargetEpsilon)));
+    const float step = length / static_cast<float>(intervals);
+    const float position = std::clamp((target - minimum) / step, 0.0f,
+        static_cast<float>(intervals));
+
+    if (direction > 0)
+    {
+        const int nextIndex = std::min(intervals,
+            static_cast<int>(std::floor(position + kTargetEpsilon)) + 1);
+        return minimum + step * static_cast<float>(nextIndex);
+    }
+
+    const int nextIndex = std::max(0,
+        static_cast<int>(std::ceil(position - kTargetEpsilon)) - 1);
+    return minimum + step * static_cast<float>(nextIndex);
+}
+
+float AdvanceTargetWithScale(float target, int direction, float sensitivityScale)
+{
     if (direction > 0)
     {
         if (target < kVanillaWalkTarget - kTargetEpsilon)
-            return std::min(kVanillaWalkTarget, target + kLowWalkBaseStep * sensitivityScale);
+            return AdvanceWithinRange(target, direction, kMinimumTarget, kVanillaWalkTarget,
+                kLowWalkBaseStep * sensitivityScale);
         if (target < kMaximumWalkTarget - kTargetEpsilon)
-            return std::min(kMaximumWalkTarget, target + kHighWalkBaseStep * sensitivityScale);
+            return AdvanceWithinRange(target, direction, kVanillaWalkTarget, kMaximumWalkTarget,
+                kHighWalkBaseStep * sensitivityScale);
         if (target < kMinimumJogTarget - kTargetEpsilon)
             return kMinimumJogTarget;
-        return std::min(kMaximumJogTarget, target + kJogBaseStep * sensitivityScale);
+        return AdvanceWithinRange(target, direction, kMinimumJogTarget, kMaximumJogTarget,
+            kJogBaseStep * sensitivityScale);
     }
 
     if (target > kMinimumJogTarget + kTargetEpsilon)
-        return std::max(kMinimumJogTarget, target - kJogBaseStep * sensitivityScale);
+        return AdvanceWithinRange(target, direction, kMinimumJogTarget, kMaximumJogTarget,
+            kJogBaseStep * sensitivityScale);
     if (target > kMaximumWalkTarget + kTargetEpsilon)
         return kMaximumWalkTarget;
     if (target > kVanillaWalkTarget + kTargetEpsilon)
-        return std::max(kVanillaWalkTarget, target - kHighWalkBaseStep * sensitivityScale);
-    return std::max(kMinimumTarget, target - kLowWalkBaseStep * sensitivityScale);
+        return AdvanceWithinRange(target, direction, kVanillaWalkTarget, kMaximumWalkTarget,
+            kHighWalkBaseStep * sensitivityScale);
+    return AdvanceWithinRange(target, direction, kMinimumTarget, kVanillaWalkTarget,
+        kLowWalkBaseStep * sensitivityScale);
+}
+
+float AdvanceTarget(float target, int direction)
+{
+    return AdvanceTargetWithScale(target, direction, SensitivityScale());
 }
 
 float WalkAdsForScale(float scale)
@@ -595,28 +636,129 @@ float StandingAdsForTarget(float target)
         constexpr float slope = (kStandingWalkAdsAtMaximum - kStandingWalkAdsAtVanillaWalk) / (0.60f - 0.35f);
         return kStandingWalkAdsAtVanillaWalk + (target - 0.35f) * slope;
     }
+    if (target < 0.70f)
+    {
+        const float position = (target - 0.60f) / (0.70f - 0.60f);
+        return kStandingWalkAdsAtMaximum + position *
+            (kStandingJogAdsAtMinimum - kStandingWalkAdsAtMaximum);
+    }
     constexpr float jogSlope = (kStandingJogAdsAtMidpoint - kStandingJogAdsAtMinimum) / (0.85f - 0.70f);
     return std::min(kStandingAdsCap, kStandingJogAdsAtMinimum + (target - 0.70f) * jogSlope);
 }
 
-void ApplySelectedScale(float scale)
+void ApplySelectedScale(float scale, float appliedTarget)
 {
     g_state.selectedScale = scale;
     *reinterpret_cast<volatile float*>(g_state.cave + kSelectedScaleOffset) = scale;
-    const float target = g_state.currentTarget;
-    const float standingAds = StandingAdsForTarget(target);
-    const float walkScale = !TargetIsJog(target) ? target / kVanillaWalkTarget : kWalkMaximumScale;
+    const float standingAds = StandingAdsForTarget(appliedTarget);
+    const float walkScale = !TargetIsJog(g_state.currentTarget) ?
+        appliedTarget / kVanillaWalkTarget : kWalkMaximumScale;
     const float walkAds = g_state.crouched ? CrouchWalkAdsForScale(walkScale) : standingAds;
     const float jogAds = g_state.crouched ? kCrouchJogAds : standingAds;
     *reinterpret_cast<volatile float*>(g_state.cave + kWalkAdsSelectedOffset) = walkAds;
     *reinterpret_cast<volatile float*>(g_state.cave + kJogAdsSelectedOffset) = jogAds;
-    *reinterpret_cast<volatile LONG*>(g_state.cave + kAdsModeJogOffset) = TargetIsJog(target) ? 1 : 0;
+    *reinterpret_cast<volatile LONG*>(g_state.cave + kAdsModeJogOffset) =
+        TargetIsJog(g_state.currentTarget) ? 1 : 0;
 }
 
-void ApplyCurrentTarget()
+void ApplyCurrentAppliedTarget()
 {
     const float nativeMagnitude = g_state.lastModeJog ? 1.0f : 0.35f;
-    ApplySelectedScale(g_state.currentTarget / nativeMagnitude);
+    ApplySelectedScale(g_state.appliedTarget / nativeMagnitude, g_state.appliedTarget);
+}
+
+void StopTargetSmoothing()
+{
+    if (g_state.smoothingTimer != 0)
+    {
+        KillTimer(nullptr, g_state.smoothingTimer);
+        g_state.smoothingTimer = 0;
+    }
+    g_state.smoothingActive = false;
+    g_state.smoothingLastTick = 0;
+}
+
+void ApplyCurrentTargetImmediately()
+{
+    StopTargetSmoothing();
+    g_state.appliedTarget = g_state.currentTarget;
+    ApplyCurrentAppliedTarget();
+}
+
+void UpdateTargetSmoothing()
+{
+    if (!g_state.smoothingActive) return;
+    const ULONGLONG now = GetTickCount64();
+    const ULONGLONG elapsedMs = std::min(
+        now - g_state.smoothingLastTick, kTargetSmoothingMaxElapsedMs);
+    g_state.smoothingLastTick = now;
+    const float remaining = g_state.currentTarget - g_state.appliedTarget;
+    if (std::abs(remaining) <= kTargetEpsilon)
+    {
+        g_state.appliedTarget = g_state.currentTarget;
+        StopTargetSmoothing();
+        ApplyCurrentAppliedTarget();
+        return;
+    }
+
+    // Complete a full-range change in a short, fixed amount of time. This keeps
+    // large high-sensitivity target jumps responsive while retaining continuous
+    // intermediate values and immediate redirection when the wheel reverses.
+    const float fullRange = kMaximumJogTarget - kMinimumTarget;
+    const float maximumChange = fullRange *
+        (static_cast<float>(elapsedMs) / kTargetSmoothingFullRangeMs);
+    if (maximumChange <= 0.0f) return;
+    g_state.appliedTarget += std::clamp(remaining, -maximumChange, maximumChange);
+    if (std::abs(g_state.currentTarget - g_state.appliedTarget) <= kTargetEpsilon)
+    {
+        g_state.appliedTarget = g_state.currentTarget;
+        StopTargetSmoothing();
+    }
+    // Keep gait inference in wheel-rebase mode throughout the transition and
+    // briefly after it finishes. The observed movement value itself lags behind
+    // scale changes, so treating that transient as a native-mode sample causes
+    // false gait rebases and visible yanks.
+    g_state.lastWheelAdjustmentTick = now;
+    g_state.gaitDetectionSuppressedUntil = now + kWheelGaitRebaseWindowMs;
+    ApplyCurrentAppliedTarget();
+}
+
+void BeginTargetSmoothing()
+{
+    if (g_state.sensitivity <= kDefaultSensitivity)
+    {
+        ApplyCurrentTargetImmediately();
+        return;
+    }
+    if (g_state.smoothingActive) return;
+    g_state.smoothingLastTick = GetTickCount64();
+    g_state.gaitDetectionSuppressedUntil =
+        g_state.smoothingLastTick + kWheelGaitRebaseWindowMs;
+    g_state.smoothingActive = true;
+    if (g_state.smoothingTimer == 0)
+        g_state.smoothingTimer = SetTimer(nullptr, kTargetSmoothingTimerId,
+            kTargetSmoothingFrameMs, nullptr);
+    if (g_state.smoothingTimer == 0)
+    {
+        ApplyCurrentTargetImmediately();
+        return;
+    }
+
+    // Apply one small, proven default-sensitivity step immediately. The player
+    // gets prompt feedback without exposing Wildlands to the full distant target
+    // in a single write; the time-based ramp completes the rest.
+    const float remaining = g_state.currentTarget - g_state.appliedTarget;
+    if (std::abs(remaining) > kTargetEpsilon)
+    {
+        const int direction = remaining > 0.0f ? 1 : -1;
+        const float next = AdvanceTargetWithScale(g_state.appliedTarget, direction, 1.0f);
+        g_state.appliedTarget = direction > 0 ?
+            std::min(next, g_state.currentTarget) : std::max(next, g_state.currentTarget);
+        g_state.lastWheelAdjustmentTick = g_state.smoothingLastTick;
+        g_state.gaitDetectionSuppressedUntil =
+            g_state.smoothingLastTick + kWheelGaitRebaseWindowMs;
+        ApplyCurrentAppliedTarget();
+    }
 }
 
 bool CurrentModeIsJog()
@@ -662,7 +804,7 @@ void RefreshCrouchState()
     if (g_state.stanceKnown && detected == g_state.crouched) return;
     g_state.stanceKnown = true;
     g_state.crouched = detected;
-    if (g_state.modeKnown) ApplyCurrentTarget();
+    if (g_state.modeKnown) ApplyCurrentAppliedTarget();
 }
 
 void SetAdsOverrideEnabled(bool enabled)
@@ -684,8 +826,9 @@ bool EnsureModeKnown()
     else
         g_state.lastWheelAdjustmentTick = GetTickCount64();
     g_state.stationaryTargetPending = false;
+    g_state.appliedTarget = g_state.currentTarget;
     ResetModeChangeCandidate();
-    ApplyCurrentTarget();
+    ApplyCurrentTargetImmediately();
     return true;
 }
 
@@ -711,11 +854,13 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam)
                     if (moving)
                     {
                         g_state.stationaryTargetPending = false;
-                        ApplyCurrentTarget();
+                        BeginTargetSmoothing();
                         if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) SetAdsOverrideEnabled(true);
                     }
                     else
                     {
+                        StopTargetSmoothing();
+                        g_state.appliedTarget = g_state.currentTarget;
                         g_state.stationaryTargetPending = true;
                     }
                 }
@@ -739,9 +884,10 @@ void PollGameplayState()
         if (!g_state.shiftBypass)
         {
             g_state.shiftBypass = true;
+            StopTargetSmoothing();
             SetAdsOverrideEnabled(false);
             g_state.adsHeld = false;
-            ApplySelectedScale(1.0f);
+            ApplySelectedScale(1.0f, kMaximumJogTarget);
         }
         return;
     }
@@ -750,15 +896,21 @@ void PollGameplayState()
     {
         g_state.shiftBypass = false;
         g_state.currentTarget = kMaximumJogTarget;
+        g_state.appliedTarget = kMaximumJogTarget;
         g_state.lastModeJog = true;
         g_state.modeKnown = true;
         ResetModeChangeCandidate();
-        ApplyCurrentTarget();
+        ApplyCurrentTargetImmediately();
         return;
     }
 
     if (!moving)
     {
+        if (g_state.smoothingActive)
+        {
+            StopTargetSmoothing();
+            g_state.appliedTarget = g_state.currentTarget;
+        }
         ResetModeChangeCandidate();
         SetAdsOverrideEnabled(false);
         g_state.adsHeld = false;
@@ -770,12 +922,20 @@ void PollGameplayState()
         g_state.stationaryTargetPending = false;
         g_state.lastWheelAdjustmentTick = GetTickCount64();
         ResetModeChangeCandidate();
-        ApplyCurrentTarget();
+        g_state.appliedTarget = g_state.currentTarget;
+        ApplyCurrentTargetImmediately();
     }
     RefreshCrouchState();
     const bool observedJog = CurrentModeIsJog();
     if (observedJog == g_state.lastModeJog)
     {
+        ResetModeChangeCandidate();
+    }
+    else if (GetTickCount64() < g_state.gaitDetectionSuppressedUntil)
+    {
+        // The probe reflects Wildlands' lagging movement response as well as its
+        // native gait. Do not infer or rebase the gait until the transition has
+        // had time to settle.
         ResetModeChangeCandidate();
     }
     else if (GetTickCount64() - g_state.lastWheelAdjustmentTick <= kWheelGaitRebaseWindowMs)
@@ -787,7 +947,7 @@ void PollGameplayState()
         g_state.lastModeJog = observedJog;
         g_state.lastWheelAdjustmentTick = now;
         ResetModeChangeCandidate();
-        ApplyCurrentTarget();
+        ApplyCurrentAppliedTarget();
     }
     else
     {
@@ -805,8 +965,9 @@ void PollGameplayState()
             const bool targetJog = !TargetIsJog(g_state.currentTarget);
             g_state.lastModeJog = observedJog;
             g_state.currentTarget = targetJog ? kMaximumJogTarget : kVanillaWalkTarget;
+            g_state.appliedTarget = g_state.currentTarget;
             ResetModeChangeCandidate();
-            ApplyCurrentTarget();
+            ApplyCurrentTargetImmediately();
         }
     }
 
@@ -815,12 +976,12 @@ void PollGameplayState()
     if (adsNow && !g_state.adsHeld)
     {
         g_state.adsHeld = true;
-        ApplyCurrentTarget();
+        ApplyCurrentAppliedTarget();
     }
     else if (!adsNow && g_state.adsHeld)
     {
         g_state.adsHeld = false;
-        ApplyCurrentTarget();
+        ApplyCurrentAppliedTarget();
     }
 }
 
@@ -916,7 +1077,7 @@ bool BuildTrampoline()
         g_state.imageBase + g_state.layout->adsTargetRva, relative)) return false;
     adsAppend(&relative, sizeof(relative));
 
-    ApplySelectedScale(1.0f);
+    ApplySelectedScale(1.0f, kMaximumJogTarget);
     DWORD oldProtection = 0;
     if (!VirtualProtect(g_state.cave, 4096, PAGE_EXECUTE_READ, &oldProtection)) return false;
 
@@ -1019,11 +1180,16 @@ DWORD WINAPI RuntimeWorker(void*)
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0)
     {
-        if (message.message == WM_TIMER) PollGameplayState();
+        if (message.message == WM_TIMER && message.hwnd == nullptr)
+        {
+            if (message.wParam == g_state.timer) PollGameplayState();
+            else if (message.wParam == g_state.smoothingTimer) UpdateTargetSmoothing();
+        }
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
 
+    StopTargetSmoothing();
     KillTimer(nullptr, g_state.timer);
     UnhookWindowsHookEx(g_state.mouseHook);
     SaveSettingsIfDue(true);

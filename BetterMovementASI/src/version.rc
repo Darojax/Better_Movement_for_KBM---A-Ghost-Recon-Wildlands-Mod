@@ -1,8 +1,8 @@
 #include <windows.h>
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,1,0,0
- PRODUCTVERSION 2,1,0,0
+ FILEVERSION 2,1,1,0
+ PRODUCTVERSION 2,1,1,0
  FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -19,12 +19,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Codex & Darojax\0"
             VALUE "FileDescription", "Better Movement for KBM native ASI runtime\0"
-            VALUE "FileVersion", "2.1.0.0\0"
+            VALUE "FileVersion", "2.1.1.0\0"
             VALUE "InternalName", "BetterMovementForKBM.asi\0"
             VALUE "LegalCopyright", "MIT License\0"
             VALUE "OriginalFilename", "BetterMovementForKBM.asi\0"
             VALUE "ProductName", "Better Movement for KBM - GRW\0"
-            VALUE "ProductVersion", "2.1.0.0\0"
+            VALUE "ProductVersion", "2.1.1.0\0"
         END
     END
     BLOCK "VarFileInfo"
