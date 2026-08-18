@@ -1,4 +1,4 @@
-BETTER MOVEMENT FOR KBM v2.1.0
+BETTER MOVEMENT FOR KBM v2.1.1
 ==============================
 
 Better Movement for KBM adds smooth, granular movement-speed control for
@@ -43,6 +43,10 @@ CONTROLS
 - Press F6 to decrease wheel sensitivity, F7 to display its current value,
   or F8 to increase it. Hold F6 or F8 for continuous adjustment. The on-screen
   slider ranges from 0 to 100, and the selected value is saved automatically.
+
+At sensitivity settings above 50, larger wheel-driven speed changes are eased
+briefly to reduce visible acceleration and deceleration jerk. The calibrated
+destination speeds and all behavior at sensitivity 50 or below are unchanged.
 
 Sensitivity shortcuts can be changed in BetterMovementForKBM.ini. The included
 comments list every accepted key name.

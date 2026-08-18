@@ -4,7 +4,7 @@ Better Movement for KBM gives mouse-and-keyboard players smooth, granular moveme
 
 Scroll the mouse wheel to transition naturally between a very slow walk and full jogging speed. Selections made while standing still apply when movement begins. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent with normal movement.
 
-Version 2.1.0 is a lightweight native ASI mod. It adds live, persistent wheel-sensitivity adjustment with an in-game slider and configurable shortcuts. It requires no separate launcher, .NET runtime, firewall rules, or SayNoToEAC installation.
+Version 2.1.1 is a lightweight native ASI mod. It includes live, persistent wheel-sensitivity adjustment with an in-game slider and configurable shortcuts. At sensitivity settings above 50, larger speed changes are eased briefly to reduce visible acceleration and deceleration jerk without altering the calibrated destination speeds. It requires no separate launcher, .NET runtime, firewall rules, or SayNoToEAC installation.
 
 [heading][color=#93c47d]Requirements[/color][/heading]
 
