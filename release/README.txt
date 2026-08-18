@@ -1,4 +1,4 @@
-BETTER MOVEMENT FOR KBM v2.0.1
+BETTER MOVEMENT FOR KBM v2.1.0
 ==============================
 
 Better Movement for KBM adds smooth, granular movement-speed control for
@@ -25,11 +25,11 @@ INSTALLATION
 
 1. Exit Ghost Recon Wildlands.
 2. Open the game folder containing GRW.exe.
-3. Copy winmm.dll and BetterMovementForKBM.asi into that folder, beside GRW.exe.
+3. Copy winmm.dll, BetterMovementForKBM.asi, and BetterMovementForKBM.ini
+   into that folder, beside GRW.exe.
 4. Launch the game normally through Steam or Ubisoft Connect.
 
-No launcher, configuration file, firewall rule, or SayNoToEAC installation is
-required.
+No launcher, .NET runtime, firewall rule, or SayNoToEAC installation is required.
 
 CONTROLS
 --------
@@ -40,6 +40,12 @@ CONTROLS
   opposite vanilla movement range.
 - Sprint normally to return to full jogging speed.
 - Mouse-wheel speed control remains available while aiming.
+- Press F6 to decrease wheel sensitivity, F7 to display its current value,
+  or F8 to increase it. Hold F6 or F8 for continuous adjustment. The on-screen
+  slider ranges from 0 to 100, and the selected value is saved automatically.
+
+Sensitivity shortcuts can be changed in BetterMovementForKBM.ini. The included
+comments list every accepted key name.
 
 The mod uses mouse-wheel input while the game is focused. In Settings > Key
 Mapping > Player Combat, reassign "Next Weapon" and "Previous Weapon" from
@@ -49,9 +55,10 @@ for direct weapon selection.
 UNINSTALLATION
 --------------
 
-Exit the game, then delete BetterMovementForKBM.asi and winmm.dll from the game
-folder. If another mod also uses that copy of winmm.dll as its ASI loader, keep
-winmm.dll and remove only BetterMovementForKBM.asi.
+Exit the game, then delete BetterMovementForKBM.asi, BetterMovementForKBM.ini,
+and winmm.dll from the game folder. If another mod also uses that copy of
+winmm.dll as its ASI loader, keep winmm.dll and remove only this mod's ASI and
+INI files.
 
 SAFETY AND DISCLAIMER
 ---------------------

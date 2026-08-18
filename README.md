@@ -6,7 +6,7 @@ Better Movement for KBM gives mouse-and-keyboard players smooth, granular moveme
 
 Scroll the mouse wheel to select movement speed, whether moving or standing still, and transition naturally from a very slow walk to a full jog. Standing, crouched, and Aim-Down-Sight movement speeds are adjusted to feel more consistent.
 
-> **Current release:** `2.0.1`, for game version `133.1.0.9840374` / Steam build `24669148`.
+> **Current release:** `2.1.0`, for game version `133.1.0.9840374` / Steam build `24669148`.
 
 ## Features
 
@@ -14,21 +14,25 @@ Scroll the mouse wheel to select movement speed, whether moving or standing stil
 - Uses the Walk/Jog key configured inside Ghost Recon Wildlands.
 - Sprinting restores full jogging speed.
 - Calibrated standing, crouched, and Aim-Down-Sight movement.
+- Live, persistent mouse-wheel sensitivity adjustment with an on-screen slider.
+- Configurable sensitivity shortcuts through a documented INI file.
 - Exact instruction verification before any game code is changed.
 - Native in-process ASI runtime with no launcher, configuration, or external process-memory access.
 
 ## Installation
 
 1. Exit Ghost Recon Wildlands.
-2. Download and extract the v2.0 ASI package.
-3. Copy `BetterMovementForKBM.asi` and `winmm.dll` beside `GRW.exe`.
+2. Download and extract the v2.1 ASI package.
+3. Copy `BetterMovementForKBM.asi`, `BetterMovementForKBM.ini`, and `winmm.dll` beside `GRW.exe`.
 4. Launch the game normally through Steam or Ubisoft Connect.
 
-No launcher, .NET runtime, INI file, firewall rule, or SayNoToEAC installation is required.
+No launcher, .NET runtime, firewall rule, or SayNoToEAC installation is required.
+
+Use `F6` to decrease wheel sensitivity, `F7` to display its current value, and `F8` to increase it. The setting is shown in-game and saved automatically. These shortcuts can be changed in `BetterMovementForKBM.ini`.
 
 Before playing, open **Settings → Key Mapping → Player Combat** and reassign **Next Weapon** and **Previous Weapon** away from the mouse wheel.
 
-To uninstall, exit the game and delete `BetterMovementForKBM.asi` and `winmm.dll`. If another mod uses the same ASI loader, keep `winmm.dll` and remove only the ASI.
+To uninstall, exit the game and delete `BetterMovementForKBM.asi`, `BetterMovementForKBM.ini`, and `winmm.dll`. If another mod uses the same ASI loader, keep `winmm.dll` and remove only this mod's ASI and INI files.
 
 ## Safety
 

@@ -1,10 +1,10 @@
 [heading][color=#93c47d]Better Movement for KBM[/color][/heading]
 
-Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in Ghost Recon Wildlands—similar to the analogue movement available with a gamepad.
+Better Movement for KBM gives mouse-and-keyboard players smooth, granular movement-speed control in Ghost Recon Wildlands, similar to the analogue movement available with a gamepad.
 
 Scroll the mouse wheel to transition naturally between a very slow walk and full jogging speed. Selections made while standing still apply when movement begins. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent with normal movement.
 
-Version 2.0.1 is a lightweight native ASI mod. It requires no launcher, configuration file, .NET runtime, firewall rules, or SayNoToEAC installation.
+Version 2.1.0 is a lightweight native ASI mod. It adds live, persistent wheel-sensitivity adjustment with an in-game slider and configurable shortcuts. It requires no separate launcher, .NET runtime, firewall rules, or SayNoToEAC installation.
 
 [heading][color=#93c47d]Requirements[/color][/heading]
 
@@ -21,7 +21,7 @@ The required x64 Ultimate ASI Loader is included as [b]winmm.dll[/b].
 [list=1]
 [*]Exit Ghost Recon Wildlands.[/*]
 [*]Open the game installation folder containing [b]GRW.exe[/b].[/*]
-[*]Extract [b]BetterMovementForKBM.asi[/b] and [b]winmm.dll[/b] into that folder, beside GRW.exe.[/*]
+[*]Extract [b]BetterMovementForKBM.asi[/b], [b]BetterMovementForKBM.ini[/b], and [b]winmm.dll[/b] into that folder, beside GRW.exe.[/*]
 [*]Launch the game normally through Steam or Ubisoft Connect.[/*]
 [/list]
 
@@ -29,16 +29,21 @@ The mod loads automatically with the game. [b]Do not use the legacy Launcher Edi
 
 [heading][color=#93c47d]Controls[/color][/heading]
 
-Before playing, open [b]Settings → Key Mapping → Player Combat[/b] and reassign [b]Next Weapon[/b] and [b]Previous Weapon[/b] away from Mouse Wheel Up and Mouse Wheel Down. Keys 1, 2, and 3 remain available for direct weapon selection.
+Before playing, open [b]Settings > Key Mapping > Player Combat[/b] and reassign [b]Next Weapon[/b] and [b]Previous Weapon[/b] away from Mouse Wheel Up and Mouse Wheel Down. Keys 1, 2, and 3 remain available for direct weapon selection.
 
 [list]
 [*][b]Mouse wheel:[/b] Adjust movement speed while moving or select the next speed while standing still.[/*]
 [*][b]Your configured Walk/Jog key:[/b] Switch immediately to the opposite vanilla movement range.[/*]
 [*][b]Sprint:[/b] Sprint normally; releasing it restores full jogging speed.[/*]
 [*][b]Mouse wheel while aiming:[/b] Continue adjusting the underlying movement speed.[/*]
+[*][b]F6:[/b] Decrease mouse-wheel movement sensitivity. Hold for continuous adjustment.[/*]
+[*][b]F7:[/b] Display the current sensitivity without changing it.[/*]
+[*][b]F8:[/b] Increase mouse-wheel movement sensitivity. Hold for continuous adjustment.[/*]
 [/list]
 
-The mod automatically uses the Walk/Jog key configured inside Ghost Recon Wildlands. It is not hardcoded to X.
+Sensitivity ranges from 0 to 100 and is saved automatically. The default is 50. Lower values provide finer speed changes per wheel notch; higher values move through the speed range more quickly. A temporary in-game slider displays the current setting. The F6, F7, and F8 shortcuts can be changed in [b]BetterMovementForKBM.ini[/b].
+
+The mod automatically uses the Walk/Jog key configured inside Ghost Recon Wildlands; it is not hardcoded to X.
 
 [heading][color=#93c47d]Compatibility[/color][/heading]
 
@@ -54,11 +59,11 @@ Before applying any modification, the ASI verifies the exact game instructions i
 
 Better Movement for KBM is intended and tested for single-player use. Back up important saves before using any game modification.
 
-The ASI modifies movement instructions inside the running game process. This is normal for this type of mod, but unofficial modifications are always used at the player’s own risk. The mod does not install a background service or remain active after the game closes.
+The ASI modifies movement instructions inside the running game process. This is normal for this type of mod, but unofficial modifications are always used at the player's own risk. The mod installs no background service and stops when the game closes.
 
 [heading][color=#93c47d]Uninstallation[/color][/heading]
 
-Exit Ghost Recon Wildlands, then remove [b]BetterMovementForKBM.asi[/b] and [b]winmm.dll[/b]. If another mod uses the same ASI loader, keep winmm.dll and remove only the ASI.
+Exit Ghost Recon Wildlands, then remove [b]BetterMovementForKBM.asi[/b], [b]BetterMovementForKBM.ini[/b], and [b]winmm.dll[/b]. If another mod uses the same ASI loader, keep winmm.dll and remove only this mod's ASI and INI files.
 
 [heading][color=#93c47d]Support, source and credits[/color][/heading]
 

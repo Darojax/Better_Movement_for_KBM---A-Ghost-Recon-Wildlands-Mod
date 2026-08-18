@@ -2,6 +2,16 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
+## 2.1.0 — 2026-08-18
+
+- Added live mouse-wheel movement-sensitivity adjustment from 0 to 100.
+- Added plain `F6` decrease, `F7` display, and `F8` increase shortcuts with hold-to-repeat adjustment.
+- Added a fullscreen-compatible, non-activating sensitivity slider with a timed fade-out.
+- Added persistent sensitivity and configurable sensitivity shortcuts through `BetterMovementForKBM.ini`.
+- Preserved the v2.0.1 movement ladder exactly at the default sensitivity of 50.
+- Expanded high sensitivity so 100 traverses the complete movement range in six wheel detents.
+- Kept sensitivity changes independent from the currently selected movement speed.
+
 ## 2.0.1 — 2026-08-17
 
 - Fixed a low-speed gait transition that could make one or two upward wheel steps jump to vanilla walking speed.
