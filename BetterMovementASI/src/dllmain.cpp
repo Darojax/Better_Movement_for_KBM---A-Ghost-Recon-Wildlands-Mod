@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -21,30 +22,30 @@ constexpr float kLowWalkBaseStep = 0.30f / 8.0f;
 constexpr float kHighWalkBaseStep = 0.25f / 7.0f;
 constexpr float kJogBaseStep = 0.03f;
 constexpr float kTargetEpsilon = 0.0001f;
+constexpr std::array<float, 8> kHolsteredTargets{
+    0.05f, 0.35f, 0.9625f, 0.9700f, 0.9775f, 0.9850f, 0.9925f, 1.00f
+};
+constexpr ULONGLONG kLearnedKeyCandidateMs = 1500;
+constexpr ULONGLONG kAutomaticGaitTimeoutMs = 750;
+constexpr ULONGLONG kInjectedKeyHoldMs = 60;
+constexpr ULONG_PTR kInjectedKeyMarker = 0x424D4B424D4B424Dull;
 constexpr int kProbeCodeOffset = 64;
 constexpr int kAdsCodeOffset = 128;
 constexpr int kRawMagnitudeOffset = 4096;
 constexpr int kSelectedScaleOffset = 4100;
 constexpr int kAdsRawOffset = 4104;
-constexpr int kWalkAdsSelectedOffset = 4108;
-constexpr int kJogAdsSelectedOffset = 4112;
+constexpr int kAdsMultiplierOffset = 4108;
 constexpr int kAdsEnabledOffset = 4132;
-constexpr int kAdsModeJogOffset = 4136;
 constexpr int kAdsVectorOffset = 4140;
 constexpr int kAdsOwnerOffset = 4168;
 constexpr int kProbeOwnerOffset = 4176;
-constexpr float kWalkMinimumScale = 1.0f / 7.0f;
-constexpr float kWalkMaximumScale = 12.0f / 7.0f;
-constexpr float kWalkAdsMinimum = 1.6875144f;
-constexpr float kWalkAdsMaximum = 3.375f;
+constexpr int kControlOwnerOffset = 4184;
 constexpr float kStandingWalkAdsAtVanillaWalk = 1.81f;
 constexpr float kStandingWalkAdsAtMaximum = 2.48f;
 constexpr float kStandingJogAdsAtMinimum = 3.00f;
 constexpr float kStandingJogAdsAtMidpoint = 3.50f;
 constexpr float kStandingAdsCap = 3.40f;
-constexpr float kCrouchWalkAdsMinimum = 0.84f;
-constexpr float kCrouchWalkAdsMaximum = 1.68f;
-constexpr float kCrouchJogAds = 2.70f;
+constexpr float kStandingRawAdsReference = 2.50f;
 constexpr ULONGLONG kWheelGaitRebaseWindowMs = 250;
 constexpr int kModeChangeConfirmationSamples = 1;
 constexpr int kMinimumSensitivity = 0;
@@ -68,6 +69,14 @@ constexpr UINT kTargetSmoothingFrameMs = 8;
 constexpr float kTargetSmoothingFullRangeMs = 160.0f;
 constexpr ULONGLONG kTargetSmoothingMaxElapsedMs = 32;
 constexpr wchar_t kSensitivityOverlayClassName[] = L"BetterMovementForKBMSensitivityOverlay";
+
+enum class Stance : std::uint8_t
+{
+    Standing = 0,
+    Crouched = 1,
+    Prone = 2,
+    Unknown = 0xFF
+};
 
 struct RuntimeLayout
 {
@@ -99,6 +108,7 @@ struct RuntimeState
     std::array<std::uint8_t, 5> originalAds{};
     std::array<std::uint8_t, 5> adsRedirect{};
     HHOOK mouseHook{};
+    HHOOK keyboardHook{};
     UINT_PTR timer{};
     float currentTarget{kMaximumJogTarget};
     int sensitivity{kDefaultSensitivity};
@@ -110,6 +120,20 @@ struct RuntimeState
     int pendingModeSamples{};
     bool lastModeJog{true};
     bool modeKnown{};
+    bool automaticGaitPending{};
+    bool automaticGaitJog{};
+    float automaticGaitPreviousTarget{kMaximumJogTarget};
+    ULONGLONG automaticGaitTick{};
+    bool injectedKeyDown{};
+    ULONGLONG injectedKeyReleaseTick{};
+    int learnedWalkJogVk{};
+    DWORD learnedWalkJogScan{};
+    bool learnedWalkJogExtended{};
+    int recentPhysicalVk{};
+    DWORD recentPhysicalScan{};
+    bool recentPhysicalExtended{};
+    ULONGLONG recentPhysicalKeyTick{};
+    std::array<bool, 256> polledKeyDown{};
     bool stationaryTargetPending{};
     float appliedTarget{kMaximumJogTarget};
     ULONGLONG smoothingLastTick{};
@@ -118,16 +142,17 @@ struct RuntimeState
     bool shiftBypass{};
     bool adsHeld{};
     bool adsOverrideEnabled{};
-    bool crouched{};
-    bool stanceKnown{};
+    Stance stance{Stance::Unknown};
     bool sensitivityDownHeld{};
     bool sensitivityDisplayHeld{};
     bool sensitivityUpHeld{};
+    bool adsProbeHeld{};
     ULONGLONG sensitivityDownRepeatTick{};
     ULONGLONG sensitivityUpRepeatTick{};
     ULONGLONG sensitivityChangedTick{};
     bool settingsDirty{};
     std::wstring settingsPath{};
+    std::wstring adsProbePath{};
     int sensitivityDownKey{VK_F6};
     int sensitivityDisplayKey{VK_F7};
     int sensitivityUpKey{VK_F8};
@@ -328,6 +353,13 @@ void LoadSettings()
         L"SensitivityDisplayKey", L"F7", VK_F7, g_state.sensitivityDisplayKey);
     g_state.sensitivityUpKeyName = ReadKeySetting(
         L"SensitivityIncreaseKey", L"F8", VK_F8, g_state.sensitivityUpKey);
+    g_state.learnedWalkJogVk = std::clamp(static_cast<int>(GetPrivateProfileIntW(
+        L"Internal", L"LearnedWalkJogVirtualKey", 0, g_state.settingsPath.c_str())), 0, 255);
+    g_state.learnedWalkJogScan = static_cast<DWORD>(std::clamp(static_cast<int>(
+        GetPrivateProfileIntW(L"Internal", L"LearnedWalkJogScanCode", 0,
+            g_state.settingsPath.c_str())), 0, 511));
+    g_state.learnedWalkJogExtended = GetPrivateProfileIntW(
+        L"Internal", L"LearnedWalkJogExtended", 0, g_state.settingsPath.c_str()) != 0;
     if (g_state.sensitivityDownKey == g_state.sensitivityDisplayKey ||
         g_state.sensitivityDownKey == g_state.sensitivityUpKey ||
         g_state.sensitivityDisplayKey == g_state.sensitivityUpKey)
@@ -358,7 +390,13 @@ void SaveSettingsIfDue(bool force = false)
         WritePrivateProfileStringW(L"Controls", L"SensitivityDisplayKey",
             g_state.sensitivityDisplayKeyName.c_str(), g_state.settingsPath.c_str()) != FALSE &&
         WritePrivateProfileStringW(L"Controls", L"SensitivityIncreaseKey",
-            g_state.sensitivityUpKeyName.c_str(), g_state.settingsPath.c_str()) != FALSE;
+            g_state.sensitivityUpKeyName.c_str(), g_state.settingsPath.c_str()) != FALSE &&
+        WritePrivateProfileStringW(L"Internal", L"LearnedWalkJogVirtualKey",
+            std::to_wstring(g_state.learnedWalkJogVk).c_str(), g_state.settingsPath.c_str()) != FALSE &&
+        WritePrivateProfileStringW(L"Internal", L"LearnedWalkJogScanCode",
+            std::to_wstring(g_state.learnedWalkJogScan).c_str(), g_state.settingsPath.c_str()) != FALSE &&
+        WritePrivateProfileStringW(L"Internal", L"LearnedWalkJogExtended",
+            g_state.learnedWalkJogExtended ? L"1" : L"0", g_state.settingsPath.c_str()) != FALSE;
     if (saved) g_state.settingsDirty = false;
 }
 
@@ -615,18 +653,40 @@ float AdvanceTarget(float target, int direction)
     return AdvanceTargetWithScale(target, direction, SensitivityScale());
 }
 
-float WalkAdsForScale(float scale)
+float AdvanceHolsteredTarget(float target, int direction)
 {
-    const float position = std::clamp((scale - kWalkMinimumScale) /
-        (kWalkMaximumScale - kWalkMinimumScale), 0.0f, 1.0f);
-    return kWalkAdsMinimum + position * (kWalkAdsMaximum - kWalkAdsMinimum);
-}
+    int rung = direction > 0 ? static_cast<int>(kHolsteredTargets.size()) - 1 : 0;
+    if (direction > 0)
+    {
+        for (std::size_t index = 0; index < kHolsteredTargets.size(); ++index)
+        {
+            if (kHolsteredTargets[index] > target + kTargetEpsilon)
+            {
+                rung = static_cast<int>(index);
+                break;
+            }
+        }
+    }
+    else
+    {
+        for (std::size_t index = kHolsteredTargets.size(); index-- > 0;)
+        {
+            if (kHolsteredTargets[index] < target - kTargetEpsilon)
+            {
+                rung = static_cast<int>(index);
+                break;
+            }
+        }
+    }
 
-float CrouchWalkAdsForScale(float scale)
-{
-    const float position = std::clamp((scale - kWalkMinimumScale) /
-        (kWalkMaximumScale - kWalkMinimumScale), 0.0f, 1.0f);
-    return kCrouchWalkAdsMinimum + position * (kCrouchWalkAdsMaximum - kCrouchWalkAdsMinimum);
+    // The holstered animation graph exposes far fewer perceptible speeds than
+    // weapon-ready locomotion. Preserve one useful rung per notch through the
+    // lower half of the sensitivity range and skip up to three rungs at 100.
+    const int extraRungs = g_state.sensitivity <= kDefaultSensitivity ? 0 :
+        ((g_state.sensitivity - kDefaultSensitivity) * 2 + 49) / 50;
+    rung += direction * extraRungs;
+    rung = std::clamp(rung, 0, static_cast<int>(kHolsteredTargets.size()) - 1);
+    return kHolsteredTargets[static_cast<std::size_t>(rung)];
 }
 
 float StandingAdsForTarget(float target)
@@ -650,15 +710,9 @@ void ApplySelectedScale(float scale, float appliedTarget)
 {
     g_state.selectedScale = scale;
     *reinterpret_cast<volatile float*>(g_state.cave + kSelectedScaleOffset) = scale;
-    const float standingAds = StandingAdsForTarget(appliedTarget);
-    const float walkScale = !TargetIsJog(g_state.currentTarget) ?
-        appliedTarget / kVanillaWalkTarget : kWalkMaximumScale;
-    const float walkAds = g_state.crouched ? CrouchWalkAdsForScale(walkScale) : standingAds;
-    const float jogAds = g_state.crouched ? kCrouchJogAds : standingAds;
-    *reinterpret_cast<volatile float*>(g_state.cave + kWalkAdsSelectedOffset) = walkAds;
-    *reinterpret_cast<volatile float*>(g_state.cave + kJogAdsSelectedOffset) = jogAds;
-    *reinterpret_cast<volatile LONG*>(g_state.cave + kAdsModeJogOffset) =
-        TargetIsJog(g_state.currentTarget) ? 1 : 0;
+    const float adsMultiplier = StandingAdsForTarget(appliedTarget) /
+        kStandingRawAdsReference;
+    *reinterpret_cast<volatile float*>(g_state.cave + kAdsMultiplierOffset) = adsMultiplier;
 }
 
 void ApplyCurrentAppliedTarget()
@@ -790,26 +844,244 @@ bool TryReadValue(std::uintptr_t address, T& value)
     return true;
 }
 
-void RefreshCrouchState()
+bool IsHolstered()
+{
+    if (g_state.cave == nullptr) return false;
+    std::uintptr_t movementOwner = 0;
+    std::uintptr_t stateObject = 0;
+    std::uint8_t holsterState = 0xFF;
+    return TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kProbeOwnerOffset),
+               movementOwner) &&
+        TryReadValue(movementOwner + 0x38, stateObject) &&
+        TryReadValue(stateObject + 0x9C, holsterState) && holsterState == 0;
+}
+
+bool HasRecentPhysicalKey()
+{
+    return g_state.recentPhysicalVk != 0 &&
+        GetTickCount64() - g_state.recentPhysicalKeyTick <= kLearnedKeyCandidateMs;
+}
+
+void LearnRecentWalkJogKey()
+{
+    if (!HasRecentPhysicalKey()) return;
+    g_state.learnedWalkJogVk = g_state.recentPhysicalVk;
+    g_state.learnedWalkJogScan = g_state.recentPhysicalScan;
+    g_state.learnedWalkJogExtended = g_state.recentPhysicalExtended;
+    g_state.settingsDirty = true;
+    g_state.sensitivityChangedTick = GetTickCount64();
+}
+
+void SendLearnedWalkJogKey(bool keyUp)
+{
+    if (g_state.learnedWalkJogVk == 0) return;
+    INPUT input{};
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = 0;
+    input.ki.wScan = static_cast<WORD>(g_state.learnedWalkJogScan != 0 ?
+        g_state.learnedWalkJogScan : MapVirtualKeyW(
+            static_cast<UINT>(g_state.learnedWalkJogVk), MAPVK_VK_TO_VSC));
+    input.ki.dwFlags = KEYEVENTF_SCANCODE |
+        (g_state.learnedWalkJogExtended ? KEYEVENTF_EXTENDEDKEY : 0) |
+        (keyUp ? KEYEVENTF_KEYUP : 0);
+    input.ki.dwExtraInfo = kInjectedKeyMarker;
+    SendInput(1, &input, sizeof(input));
+}
+
+bool BeginAutomaticGaitChange(bool jog, float previousTarget)
+{
+    if (g_state.learnedWalkJogVk == 0 || g_state.injectedKeyDown) return false;
+    g_state.automaticGaitPending = true;
+    g_state.automaticGaitJog = jog;
+    g_state.automaticGaitPreviousTarget = previousTarget;
+    g_state.automaticGaitTick = GetTickCount64();
+    g_state.injectedKeyDown = true;
+    g_state.injectedKeyReleaseTick = g_state.automaticGaitTick + kInjectedKeyHoldMs;
+    SendLearnedWalkJogKey(false);
+    return true;
+}
+
+void ReleaseInjectedKeyIfDue(bool force = false)
+{
+    if (!g_state.injectedKeyDown ||
+        (!force && GetTickCount64() < g_state.injectedKeyReleaseTick)) return;
+    SendLearnedWalkJogKey(true);
+    g_state.injectedKeyDown = false;
+}
+
+bool IsWalkJogKeyCandidate(DWORD virtualKey)
+{
+    return virtualKey > 0 && virtualKey < 256 &&
+        virtualKey != VK_LBUTTON && virtualKey != VK_RBUTTON &&
+        virtualKey != VK_MBUTTON && virtualKey != VK_XBUTTON1 && virtualKey != VK_XBUTTON2 &&
+        virtualKey != 'W' && virtualKey != 'A' && virtualKey != 'S' && virtualKey != 'D' &&
+        virtualKey != VK_SHIFT && virtualKey != VK_LSHIFT && virtualKey != VK_RSHIFT &&
+        virtualKey != static_cast<DWORD>(g_state.sensitivityDownKey) &&
+        virtualKey != static_cast<DWORD>(g_state.sensitivityDisplayKey) &&
+        virtualKey != static_cast<DWORD>(g_state.sensitivityUpKey) && virtualKey != VK_F9;
+}
+
+void RecordPhysicalKey(DWORD virtualKey, DWORD scanCode, bool extended)
+{
+    if (!IsWalkJogKeyCandidate(virtualKey)) return;
+    g_state.recentPhysicalVk = static_cast<int>(virtualKey);
+    g_state.recentPhysicalScan = scanCode;
+    g_state.recentPhysicalExtended = extended;
+    g_state.recentPhysicalKeyTick = GetTickCount64();
+}
+
+void PollPhysicalKeyCandidates()
+{
+    for (DWORD virtualKey = 1; virtualKey < 256; ++virtualKey)
+    {
+        const SHORT state = GetAsyncKeyState(static_cast<int>(virtualKey));
+        const bool down = (state & 0x8000) != 0;
+        const bool newlyPressed = down && !g_state.polledKeyDown[virtualKey];
+        g_state.polledKeyDown[virtualKey] = down;
+        if (!newlyPressed || !IsWalkJogKeyCandidate(virtualKey)) continue;
+        const DWORD scanCode = MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC_EX);
+        RecordPhysicalKey(virtualKey, scanCode & 0xFF,
+            (scanCode & 0xFF00) == 0xE000 || (scanCode & 0xFF00) == 0xE100);
+    }
+}
+
+LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam)
+{
+    if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) && IsGameForeground())
+    {
+        const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+        if ((key->flags & LLKHF_INJECTED) == 0 && key->dwExtraInfo != kInjectedKeyMarker)
+        {
+            RecordPhysicalKey(key->vkCode, key->scanCode,
+                (key->flags & LLKHF_EXTENDED) != 0);
+        }
+    }
+    return CallNextHookEx(nullptr, code, wParam, lParam);
+}
+
+void RefreshStanceState()
 {
     std::uintptr_t owner = 0;
     std::uintptr_t stateObject = 0;
     std::uint8_t primary = 0;
     std::uint8_t mirror = 0;
+    Stance detected = Stance::Unknown;
     if (!TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kProbeOwnerOffset), owner) ||
         !TryReadValue(owner + 0x38, stateObject) ||
         !TryReadValue(stateObject + 0xB0, primary) ||
-        !TryReadValue(stateObject + 0x330, mirror) || primary != mirror || primary > 1) return;
-    const bool detected = primary == 1;
-    if (g_state.stanceKnown && detected == g_state.crouched) return;
-    g_state.stanceKnown = true;
-    g_state.crouched = detected;
+        !TryReadValue(stateObject + 0x330, mirror) || primary != mirror || primary > 2)
+    {
+        detected = Stance::Unknown;
+    }
+    else
+    {
+        detected = static_cast<Stance>(primary);
+    }
+    if (detected == g_state.stance) return;
+    g_state.stance = detected;
     if (g_state.modeKnown) ApplyCurrentAppliedTarget();
+}
+
+const char* StanceName(Stance stance)
+{
+    switch (stance)
+    {
+    case Stance::Standing: return "standing";
+    case Stance::Crouched: return "crouched";
+    case Stance::Prone: return "prone";
+    default: return "unknown";
+    }
+}
+
+void CaptureAdsProfileSnapshot()
+{
+    if (g_state.adsProbePath.empty() || g_state.cave == nullptr) return;
+    float rawAds = 0.0f;
+    float adsMultiplier = 1.0f;
+    std::array<float, 4> vector{};
+    std::uintptr_t adsOwner = 0;
+    std::uintptr_t movementOwner = 0;
+    std::uintptr_t stateObject = 0;
+    std::uint8_t holsterCandidate = 0xFF;
+    std::uintptr_t controlOwner = 0;
+    std::uintptr_t controlState = 0;
+    std::array<std::uint8_t, 256> controlStateBytes{};
+    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsRawOffset), rawAds);
+    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsMultiplierOffset), adsMultiplier);
+    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsVectorOffset), vector);
+    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsOwnerOffset), adsOwner);
+    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kProbeOwnerOffset), movementOwner);
+    if (TryReadValue(movementOwner + 0x38, stateObject))
+        TryReadValue(stateObject + 0x9C, holsterCandidate);
+    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kControlOwnerOffset), controlOwner);
+    TryReadValue(controlOwner + 0x18, controlState);
+    const bool controlStateReadable = TryReadValue(controlState, controlStateBytes);
+    const ULONGLONG recentKeyAge = g_state.recentPhysicalKeyTick == 0 ?
+        ~ULONGLONG{0} : GetTickCount64() - g_state.recentPhysicalKeyTick;
+
+    SYSTEMTIME time{};
+    GetLocalTime(&time);
+    std::array<char, 768> line{};
+    const int length = sprintf_s(line.data(), line.size(),
+        "%04u-%02u-%02u %02u:%02u:%02u.%03u stance=%s ads_key=%d override=%d moving=%d "
+        "target=%.6f applied=%.6f scale=%.6f raw_ads=%.9g ads_multiplier=%.9g selected_ads=%.9g "
+        "raw_magnitude=%.9g mode=%s ads_owner=0x%llX movement_owner=0x%llX "
+        "state_object=0x%llX holster_candidate=%u learned_vk=%d learned_scan=%lu "
+        "recent_vk=%d recent_age_ms=%llu auto_pending=%d control_owner=0x%llX control_state=0x%llX "
+        "vector=[%.9g,%.9g,%.9g,%.9g]\r\n",
+        time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
+        time.wSecond, time.wMilliseconds, StanceName(g_state.stance),
+        (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ? 1 : 0,
+        g_state.adsOverrideEnabled ? 1 : 0, IsMoving() ? 1 : 0,
+        g_state.currentTarget, g_state.appliedTarget, g_state.selectedScale,
+        rawAds, adsMultiplier, rawAds * adsMultiplier, g_state.lastRawMagnitude,
+        g_state.lastModeJog ? "jog" : "walk",
+        static_cast<unsigned long long>(adsOwner),
+        static_cast<unsigned long long>(movementOwner),
+        static_cast<unsigned long long>(stateObject), static_cast<unsigned>(holsterCandidate),
+        g_state.learnedWalkJogVk, static_cast<unsigned long>(g_state.learnedWalkJogScan),
+        g_state.recentPhysicalVk, static_cast<unsigned long long>(recentKeyAge),
+        g_state.automaticGaitPending ? 1 : 0,
+        static_cast<unsigned long long>(controlOwner),
+        static_cast<unsigned long long>(controlState),
+        vector[0], vector[1], vector[2], vector[3]);
+    if (length <= 0) return;
+
+    const HANDLE file = CreateFileW(g_state.adsProbePath.c_str(), FILE_APPEND_DATA,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return;
+    DWORD written = 0;
+    WriteFile(file, line.data(), static_cast<DWORD>(length), &written, nullptr);
+    if (controlStateReadable)
+    {
+        std::array<char, 544> stateLine{};
+        int stateLength = sprintf_s(stateLine.data(), stateLine.size(), "control_state_bytes=");
+        for (const std::uint8_t byte : controlStateBytes)
+        {
+            if (stateLength < 0 || stateLength + 2 >= static_cast<int>(stateLine.size())) break;
+            const int appended = sprintf_s(stateLine.data() + stateLength,
+                stateLine.size() - static_cast<std::size_t>(stateLength), "%02X", byte);
+            if (appended != 2) break;
+            stateLength += appended;
+        }
+        if (stateLength > 0 && stateLength + 2 < static_cast<int>(stateLine.size()))
+        {
+            stateLine[stateLength++] = '\r';
+            stateLine[stateLength++] = '\n';
+            WriteFile(file, stateLine.data(), static_cast<DWORD>(stateLength), &written, nullptr);
+        }
+    }
+    CloseHandle(file);
+}
+
+bool AdsOverrideAllowed(bool adsNow)
+{
+    return adsNow && g_state.stance != Stance::Unknown;
 }
 
 void SetAdsOverrideEnabled(bool enabled)
 {
-    *reinterpret_cast<volatile LONG*>(g_state.cave + kAdsModeJogOffset) = TargetIsJog(g_state.currentTarget) ? 1 : 0;
     if (g_state.adsOverrideEnabled == enabled) return;
     *reinterpret_cast<volatile LONG*>(g_state.cave + kAdsEnabledOffset) = enabled ? 1 : 0;
     g_state.adsOverrideEnabled = enabled;
@@ -845,17 +1117,40 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam)
                 const bool moving = IsMoving();
                 if (moving && !EnsureModeKnown()) return 1;
                 const int direction = delta > 0 ? 1 : -1;
-                const float next = AdvanceTarget(g_state.currentTarget, direction);
+                if (g_state.automaticGaitPending) return 1;
+                const bool holstered = moving && IsHolstered();
+                const float next = holstered ? AdvanceHolsteredTarget(
+                    g_state.currentTarget, direction) : AdvanceTarget(g_state.currentTarget, direction);
                 if (std::abs(next - g_state.currentTarget) > kTargetEpsilon)
                 {
+                    const float previousTarget = g_state.currentTarget;
+                    const bool crossesGait = TargetIsJog(next) != TargetIsJog(previousTarget);
+                    const bool desiredJog = TargetIsJog(next);
+                    // Until a binding has been learned, stop at the native
+                    // holstered boundary. One ordinary user toggle teaches the
+                    // binding and keeps the fallback predictable.
+                    if (holstered && crossesGait && desiredJog != g_state.lastModeJog &&
+                        g_state.learnedWalkJogVk == 0) return 1;
                     g_state.currentTarget = next;
                     g_state.lastWheelAdjustmentTick = GetTickCount64();
                     ResetModeChangeCandidate();
                     if (moving)
                     {
                         g_state.stationaryTargetPending = false;
-                        BeginTargetSmoothing();
-                        if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) SetAdsOverrideEnabled(true);
+                        if (holstered && crossesGait && desiredJog != g_state.lastModeJog &&
+                            BeginAutomaticGaitChange(desiredJog, previousTarget))
+                        {
+                            StopTargetSmoothing();
+                            g_state.appliedTarget = next;
+                            const float desiredNativeMagnitude = desiredJog ? 1.0f : 0.35f;
+                            ApplySelectedScale(next / desiredNativeMagnitude, next);
+                        }
+                        else
+                        {
+                            BeginTargetSmoothing();
+                        }
+                        const bool adsNow = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+                        if (adsNow) SetAdsOverrideEnabled(AdsOverrideAllowed(adsNow));
                     }
                     else
                     {
@@ -875,7 +1170,12 @@ void PollGameplayState()
 {
     SaveSettingsIfDue();
     PollSensitivityControls();
+    ReleaseInjectedKeyIfDue();
     if (!IsGameForeground()) return;
+    PollPhysicalKeyCandidates();
+    const bool adsProbeDown = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+    if (adsProbeDown && !g_state.adsProbeHeld) CaptureAdsProfileSnapshot();
+    g_state.adsProbeHeld = adsProbeDown;
     const bool moving = IsMoving();
     const bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
@@ -884,6 +1184,7 @@ void PollGameplayState()
         if (!g_state.shiftBypass)
         {
             g_state.shiftBypass = true;
+            g_state.automaticGaitPending = false;
             StopTargetSmoothing();
             SetAdsOverrideEnabled(false);
             g_state.adsHeld = false;
@@ -906,6 +1207,14 @@ void PollGameplayState()
 
     if (!moving)
     {
+        if (g_state.automaticGaitPending &&
+            GetTickCount64() - g_state.automaticGaitTick >= kAutomaticGaitTimeoutMs)
+        {
+            g_state.automaticGaitPending = false;
+            g_state.currentTarget = g_state.automaticGaitPreviousTarget;
+            g_state.appliedTarget = g_state.currentTarget;
+            ApplyCurrentAppliedTarget();
+        }
         if (g_state.smoothingActive)
         {
             StopTargetSmoothing();
@@ -925,11 +1234,40 @@ void PollGameplayState()
         g_state.appliedTarget = g_state.currentTarget;
         ApplyCurrentTargetImmediately();
     }
-    RefreshCrouchState();
+    RefreshStanceState();
     const bool observedJog = CurrentModeIsJog();
-    if (observedJog == g_state.lastModeJog)
+    if (g_state.automaticGaitPending)
+    {
+        if (observedJog == g_state.automaticGaitJog)
+        {
+            g_state.lastModeJog = observedJog;
+            g_state.automaticGaitPending = false;
+            ResetModeChangeCandidate();
+            ApplyCurrentAppliedTarget();
+        }
+        else if (GetTickCount64() - g_state.automaticGaitTick >= kAutomaticGaitTimeoutMs)
+        {
+            g_state.automaticGaitPending = false;
+            g_state.currentTarget = g_state.automaticGaitPreviousTarget;
+            g_state.appliedTarget = g_state.currentTarget;
+            g_state.lastModeJog = observedJog;
+            ResetModeChangeCandidate();
+            ApplyCurrentAppliedTarget();
+        }
+    }
+    else if (observedJog == g_state.lastModeJog)
     {
         ResetModeChangeCandidate();
+    }
+    else if (HasRecentPhysicalKey())
+    {
+        LearnRecentWalkJogKey();
+        const bool targetJog = !TargetIsJog(g_state.currentTarget);
+        g_state.lastModeJog = observedJog;
+        g_state.currentTarget = targetJog ? kMaximumJogTarget : kVanillaWalkTarget;
+        g_state.appliedTarget = g_state.currentTarget;
+        ResetModeChangeCandidate();
+        ApplyCurrentTargetImmediately();
     }
     else if (GetTickCount64() < g_state.gaitDetectionSuppressedUntil)
     {
@@ -972,7 +1310,7 @@ void PollGameplayState()
     }
 
     const bool adsNow = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-    SetAdsOverrideEnabled(adsNow);
+    SetAdsOverrideEnabled(AdsOverrideAllowed(adsNow));
     if (adsNow && !g_state.adsHeld)
     {
         g_state.adsHeld = true;
@@ -1003,12 +1341,30 @@ bool BuildTrampoline()
 
     const std::uintptr_t caveAddress = reinterpret_cast<std::uintptr_t>(g_state.cave);
     const std::uintptr_t originalGetter = g_state.imageBase + g_state.layout->controlTargetRva;
-    g_state.cave[0] = 0xE8;
+    int control = 0;
+    auto controlAppend = [&](const void* bytes, int count)
+    {
+        std::memcpy(g_state.cave + control, bytes, count);
+        control += count;
+    };
     std::int32_t relative = 0;
-    if (!Relative32(caveAddress, 5, originalGetter, relative)) return false;
-    std::memcpy(g_state.cave + 1, &relative, sizeof(relative));
-    const std::uint8_t controlCode[] = { 0xF3, 0x0F, 0x59, 0x05, 0xF7, 0x0F, 0x00, 0x00, 0xC3 };
-    std::memcpy(g_state.cave + 5, controlCode, sizeof(controlCode));
+    const std::uint8_t storeControlOwner[] = { 0x48, 0x89, 0x0D };
+    controlAppend(storeControlOwner, sizeof(storeControlOwner));
+    relative = static_cast<std::int32_t>((caveAddress + kControlOwnerOffset) -
+        (caveAddress + control + 4));
+    controlAppend(&relative, sizeof(relative));
+    const int controlCallOffset = control;
+    const std::uint8_t call = 0xE8;
+    controlAppend(&call, 1);
+    if (!Relative32(caveAddress + controlCallOffset, 5, originalGetter, relative)) return false;
+    controlAppend(&relative, sizeof(relative));
+    const std::uint8_t multiplyScale[] = { 0xF3, 0x0F, 0x59, 0x05 };
+    controlAppend(multiplyScale, sizeof(multiplyScale));
+    relative = static_cast<std::int32_t>((caveAddress + kSelectedScaleOffset) -
+        (caveAddress + control + 4));
+    controlAppend(&relative, sizeof(relative));
+    const std::uint8_t controlReturn = 0xC3;
+    controlAppend(&controlReturn, 1);
 
     int probe = kProbeCodeOffset;
     auto append = [&](const void* bytes, int count)
@@ -1058,18 +1414,10 @@ bool BuildTrampoline()
     adsAppend(compareEnabled, sizeof(compareEnabled));
     relative = static_cast<std::int32_t>((caveAddress + kAdsEnabledOffset) - (caveAddress + ads + 5));
     adsAppend(&relative, sizeof(relative));
-    const std::uint8_t enabledTail[] = { 0x00, 0x74, 27, 0x83, 0x3D };
+    const std::uint8_t enabledTail[] = { 0x00, 0x74, 8 };
     adsAppend(enabledTail, sizeof(enabledTail));
-    relative = static_cast<std::int32_t>((caveAddress + kAdsModeJogOffset) - (caveAddress + ads + 5));
-    adsAppend(&relative, sizeof(relative));
-    const std::uint8_t modeTail[] = { 0x00, 0x75, 10 };
-    adsAppend(modeTail, sizeof(modeTail));
-    const std::uint8_t loadWalkAds[] = { 0xF3, 0x0F, 0x10, 0x3D };
-    adsRip(loadWalkAds, sizeof(loadWalkAds), kWalkAdsSelectedOffset);
-    const std::uint8_t skipJog[] = { 0xEB, 8 };
-    adsAppend(skipJog, sizeof(skipJog));
-    const std::uint8_t loadJogAds[] = { 0xF3, 0x0F, 0x10, 0x3D };
-    adsRip(loadJogAds, sizeof(loadJogAds), kJogAdsSelectedOffset);
+    const std::uint8_t multiplyRawAds[] = { 0xF3, 0x0F, 0x59, 0x3D };
+    adsRip(multiplyRawAds, sizeof(multiplyRawAds), kAdsMultiplierOffset);
     const int adsJumpOffset = ads;
     const std::uint8_t restoreFlagsAndJump[] = { 0x9D, 0xE9 };
     adsAppend(restoreFlagsAndJump, sizeof(restoreFlagsAndJump));
@@ -1098,6 +1446,9 @@ DWORD WINAPI RuntimeWorker(void*)
     const std::wstring hostPath = ModulePath(nullptr);
     if (_wcsicmp(FileName(hostPath).c_str(), L"GRW.exe") != 0) return 1;
     LoadSettings();
+    const std::wstring moduleDirectory = DirectoryName(ModulePath(g_state.module));
+    if (!moduleDirectory.empty())
+        g_state.adsProbePath = moduleDirectory + L"\\BetterMovementForKBM-ads-profile.log";
     g_state.imageBase = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     if (g_state.imageBase == 0) return 2;
     const std::size_t imageSize = ImageSize(g_state.imageBase);
@@ -1164,13 +1515,14 @@ DWORD WINAPI RuntimeWorker(void*)
     }
     g_state.gameWindow = GetForegroundWindow();
     CreateSensitivityOverlay();
-    const HMODULE hostModule = GetModuleHandleW(nullptr);
-    g_state.mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHook, hostModule, 0);
+    g_state.mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHook, g_state.module, 0);
+    g_state.keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHook, g_state.module, 0);
     g_state.timer = SetTimer(nullptr, 1, 50, nullptr);
-    if (g_state.mouseHook == nullptr || g_state.timer == 0)
+    if (g_state.mouseHook == nullptr || g_state.keyboardHook == nullptr || g_state.timer == 0)
     {
         if (g_state.timer != 0) KillTimer(nullptr, g_state.timer);
         if (g_state.mouseHook != nullptr) UnhookWindowsHookEx(g_state.mouseHook);
+        if (g_state.keyboardHook != nullptr) UnhookWindowsHookEx(g_state.keyboardHook);
         DestroySensitivityOverlay();
         RestorePatches();
         VirtualFree(g_state.cave, 0, MEM_RELEASE);
@@ -1190,8 +1542,10 @@ DWORD WINAPI RuntimeWorker(void*)
     }
 
     StopTargetSmoothing();
+    ReleaseInjectedKeyIfDue(true);
     KillTimer(nullptr, g_state.timer);
     UnhookWindowsHookEx(g_state.mouseHook);
+    UnhookWindowsHookEx(g_state.keyboardHook);
     SaveSettingsIfDue(true);
     DestroySensitivityOverlay();
     RestorePatches();
