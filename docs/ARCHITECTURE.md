@@ -1,6 +1,6 @@
 # Architecture
 
-Better Movement for KBM v2 is a native x64 ASI loaded into `GRW.exe` by Ultimate ASI Loader. It has no companion launcher, background service, telemetry, networking, or external process-memory component. A local INI beside the ASI stores wheel sensitivity and its three shortcuts.
+Better Movement for KBM v2 is a native x64 ASI loaded into `GRW.exe` by Ultimate ASI Loader. It has no companion launcher, background service, telemetry, networking, or external process-memory component. A local INI beside the ASI stores wheel sensitivity, its three shortcuts, and the automatically learned Walk/Jog binding.
 
 ## Startup and compatibility
 
@@ -16,9 +16,13 @@ Unsupported or modified executables are left untouched.
 
 ## Runtime
 
-The runtime observes the game's native gait state, so the Walk/Jog binding configured in Wildlands remains authoritative. Mouse-wheel input selects the calibrated movement ladder, sprint restores full jogging speed, and the ADS redirect applies the standing and crouched calibration. Sensitivity scales wheel-step size without changing the selected speed or calibrated endpoints. Above sensitivity 50, the selected destination updates immediately while a separate applied target follows it through a short time-based transition capped at roughly 160 ms across the full range; repeated wheel events redirect that transition from its current position. Gait inference is suspended while the game settles so delayed movement samples cannot cause false Walk/Jog rebases. Walk/Jog switching, sprint restoration, stationary selection, and sensitivity 50 or below bypass smoothing. A no-activate, click-through Windows overlay displays live sensitivity changes without hooking the renderer.
+The runtime observes the game's native gait state, so the Walk/Jog binding configured in Wildlands remains authoritative. Mouse-wheel input selects the calibrated drawn-weapon movement ladder or a separate holstered curve, and sprint restores full jogging speed. After one ordinary Walk/Jog press while moving, the runtime stores that physical binding and uses it to cross the holstered gait boundary automatically; a later physical press updates the stored binding.
 
-The worker waits until Wildlands has remained in the foreground before installing its low-level mouse hook. All memory access is confined to the current `GRW.exe` process.
+The ADS redirect uses both stance and native gait to keep aiming movement below the corresponding non-ADS target while retaining a useful improvement over vanilla. Sensitivity scales wheel-step size without changing the selected speed or calibrated endpoints. Above sensitivity 50, the selected destination updates immediately while a separate applied target follows it through a short time-based transition capped at roughly 160 ms across the full range; repeated wheel events redirect that transition from its current position. Gait inference is suspended while the game settles so delayed movement samples cannot cause false Walk/Jog rebases. Walk/Jog switching, sprint restoration, stationary selection, and sensitivity 50 or below bypass smoothing.
+
+A no-activate, click-through Windows overlay displays live sensitivity changes without hooking the renderer. A separate embedded-image overlay appears once after the full-size GRW window is foreground and stable, then slides into and out of the lower-left corner. Each frame is clipped to the game window so the notification cannot spill onto an adjacent monitor.
+
+The worker waits for the full-size Wildlands game window, rather than its startup splash, before installing its low-level input hooks. All memory access is confined to the current `GRW.exe` process.
 
 ## Shutdown
 

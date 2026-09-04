@@ -1,15 +1,17 @@
 #include <windows.h>
+#include <objidl.h>
+#include <gdiplus.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <utility>
 
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdiplus.lib")
 
 namespace
 {
@@ -33,19 +35,16 @@ constexpr int kProbeCodeOffset = 64;
 constexpr int kAdsCodeOffset = 128;
 constexpr int kRawMagnitudeOffset = 4096;
 constexpr int kSelectedScaleOffset = 4100;
-constexpr int kAdsRawOffset = 4104;
 constexpr int kAdsMultiplierOffset = 4108;
 constexpr int kAdsEnabledOffset = 4132;
-constexpr int kAdsVectorOffset = 4140;
-constexpr int kAdsOwnerOffset = 4168;
 constexpr int kProbeOwnerOffset = 4176;
-constexpr int kControlOwnerOffset = 4184;
 constexpr float kStandingWalkAdsAtVanillaWalk = 1.81f;
 constexpr float kStandingWalkAdsAtMaximum = 2.48f;
 constexpr float kStandingJogAdsAtMinimum = 3.00f;
 constexpr float kStandingJogAdsAtMidpoint = 3.50f;
 constexpr float kStandingAdsCap = 3.40f;
 constexpr float kStandingRawAdsReference = 2.50f;
+constexpr float kStandingWalkRawAdsReference = 1.3504f;
 constexpr ULONGLONG kWheelGaitRebaseWindowMs = 250;
 constexpr int kModeChangeConfirmationSamples = 1;
 constexpr int kMinimumSensitivity = 0;
@@ -66,9 +65,21 @@ constexpr UINT_PTR kSensitivityOverlayTimerId = 2;
 constexpr UINT kSensitivityOverlayFrameMs = 16;
 constexpr UINT_PTR kTargetSmoothingTimerId = 3;
 constexpr UINT kTargetSmoothingFrameMs = 8;
+constexpr int kStartupLogoResourceId = 101;
+constexpr UINT_PTR kStartupOverlayTimerId = 4;
+constexpr UINT kStartupOverlayFrameMs = 16;
+constexpr ULONGLONG kStartupSlideInMs = 350;
+constexpr ULONGLONG kStartupHoldMs = 2300;
+constexpr ULONGLONG kStartupSlideOutMs = 350;
+constexpr int kStartupOverlayLeftMargin = 36;
+constexpr int kStartupOverlayBottomMargin = 36;
+constexpr int kMinimumGameWindowWidth = 800;
+constexpr int kMinimumGameWindowHeight = 450;
+constexpr int kStableGameWindowTicks = 10;
 constexpr float kTargetSmoothingFullRangeMs = 160.0f;
 constexpr ULONGLONG kTargetSmoothingMaxElapsedMs = 32;
 constexpr wchar_t kSensitivityOverlayClassName[] = L"BetterMovementForKBMSensitivityOverlay";
+constexpr wchar_t kStartupOverlayClassName[] = L"BetterMovementForKBMStartupOverlay";
 
 enum class Stance : std::uint8_t
 {
@@ -146,13 +157,11 @@ struct RuntimeState
     bool sensitivityDownHeld{};
     bool sensitivityDisplayHeld{};
     bool sensitivityUpHeld{};
-    bool adsProbeHeld{};
     ULONGLONG sensitivityDownRepeatTick{};
     ULONGLONG sensitivityUpRepeatTick{};
     ULONGLONG sensitivityChangedTick{};
     bool settingsDirty{};
     std::wstring settingsPath{};
-    std::wstring adsProbePath{};
     int sensitivityDownKey{VK_F6};
     int sensitivityDisplayKey{VK_F7};
     int sensitivityUpKey{VK_F8};
@@ -163,6 +172,15 @@ struct RuntimeState
     HWND sensitivityOverlay{};
     ULONGLONG sensitivityOverlayFadeTick{};
     ULONGLONG sensitivityOverlayHideTick{};
+    ULONG_PTR gdiplusToken{};
+    IStream* startupLogoStream{};
+    Gdiplus::Bitmap* startupLogo{};
+    HWND startupOverlay{};
+    ULONGLONG startupOverlayStartTick{};
+    int startupOverlayStartLeft{};
+    int startupOverlayTargetLeft{};
+    int startupOverlayTop{};
+    bool startupOverlayShown{};
     bool patchesInstalled{};
 };
 
@@ -278,6 +296,7 @@ std::wstring DirectoryName(const std::wstring& path)
 bool IsGameForeground();
 void ShowSensitivityOverlay();
 void UpdateSensitivityOverlay();
+void UpdateStartupOverlay();
 
 std::wstring NormalizeKeyName(std::wstring name)
 {
@@ -551,6 +570,296 @@ void UpdateSensitivityOverlay()
     }
 }
 
+struct GameWindowSearch
+{
+    HWND window{};
+    long long area{};
+};
+
+BOOL CALLBACK FindGameWindowCallback(HWND window, LPARAM parameter)
+{
+    DWORD processId = 0;
+    GetWindowThreadProcessId(window, &processId);
+    if (processId != GetCurrentProcessId() || !IsWindowVisible(window) ||
+        GetWindow(window, GW_OWNER) != nullptr) return TRUE;
+
+    RECT client{};
+    if (!GetClientRect(window, &client)) return TRUE;
+    const int width = client.right - client.left;
+    const int height = client.bottom - client.top;
+    if (width < kMinimumGameWindowWidth || height < kMinimumGameWindowHeight) return TRUE;
+
+    auto* search = reinterpret_cast<GameWindowSearch*>(parameter);
+    const long long area = static_cast<long long>(width) * height;
+    if (area > search->area)
+    {
+        search->window = window;
+        search->area = area;
+    }
+    return TRUE;
+}
+
+HWND FindFullSizeGameWindow()
+{
+    GameWindowSearch search{};
+    EnumWindows(FindGameWindowCallback, reinterpret_cast<LPARAM>(&search));
+    return search.window;
+}
+
+HWND WaitForStableGameWindow()
+{
+    HWND candidate = nullptr;
+    int stableTicks = 0;
+    while (stableTicks < kStableGameWindowTicks)
+    {
+        const HWND found = FindFullSizeGameWindow();
+        DWORD foregroundProcessId = 0;
+        GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcessId);
+        if (found != nullptr && foregroundProcessId == GetCurrentProcessId())
+        {
+            if (found == candidate) ++stableTicks;
+            else
+            {
+                candidate = found;
+                stableTicks = 1;
+            }
+        }
+        else
+        {
+            candidate = nullptr;
+            stableTicks = 0;
+        }
+        Sleep(100);
+    }
+    return candidate;
+}
+
+float SmoothStep(float value)
+{
+    const float clamped = std::clamp(value, 0.0f, 1.0f);
+    return clamped * clamped * (3.0f - 2.0f * clamped);
+}
+
+bool RenderStartupOverlay(int left, int top, BYTE opacity)
+{
+    if (g_state.startupOverlay == nullptr || g_state.startupLogo == nullptr) return false;
+    const int width = static_cast<int>(g_state.startupLogo->GetWidth());
+    const int height = static_cast<int>(g_state.startupLogo->GetHeight());
+    if (width <= 0 || height <= 0) return false;
+
+    RECT gameRect{};
+    if (g_state.gameWindow == nullptr || !GetWindowRect(g_state.gameWindow, &gameRect))
+        return false;
+    const int gameLeft = static_cast<int>(gameRect.left);
+    const int gameTop = static_cast<int>(gameRect.top);
+    const int gameRight = static_cast<int>(gameRect.right);
+    const int gameBottom = static_cast<int>(gameRect.bottom);
+    const int clippedLeft = std::max(left, gameLeft);
+    const int clippedTop = std::max(top, gameTop);
+    const int clippedRight = std::min(left + width, gameRight);
+    const int clippedBottom = std::min(top + height, gameBottom);
+    if (clippedLeft >= clippedRight || clippedTop >= clippedBottom)
+    {
+        ShowWindow(g_state.startupOverlay, SW_HIDE);
+        return true;
+    }
+
+    HDC screen = GetDC(nullptr);
+    if (screen == nullptr) return false;
+    HDC memory = CreateCompatibleDC(screen);
+    if (memory == nullptr)
+    {
+        ReleaseDC(nullptr, screen);
+        return false;
+    }
+
+    BITMAPINFO bitmapInfo{};
+    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmapInfo.bmiHeader.biWidth = width;
+    bitmapInfo.bmiHeader.biHeight = -height;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
+    void* pixels = nullptr;
+    HBITMAP bitmap = CreateDIBSection(screen, &bitmapInfo, DIB_RGB_COLORS,
+        &pixels, nullptr, 0);
+    if (bitmap == nullptr || pixels == nullptr)
+    {
+        if (bitmap != nullptr) DeleteObject(bitmap);
+        DeleteDC(memory);
+        ReleaseDC(nullptr, screen);
+        return false;
+    }
+    std::memset(pixels, 0, static_cast<std::size_t>(width) * height * 4);
+    const HGDIOBJ previousBitmap = SelectObject(memory, bitmap);
+    {
+        Gdiplus::Graphics graphics(memory);
+        graphics.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
+        graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        graphics.DrawImage(g_state.startupLogo, 0, 0, width, height);
+    }
+
+    POINT destination{ clippedLeft, clippedTop };
+    POINT source{ clippedLeft - left, clippedTop - top };
+    SIZE size{ clippedRight - clippedLeft, clippedBottom - clippedTop };
+    BLENDFUNCTION blend{ AC_SRC_OVER, 0, opacity, AC_SRC_ALPHA };
+    const BOOL updated = UpdateLayeredWindow(g_state.startupOverlay, screen,
+        &destination, &size, memory, &source, 0, &blend, ULW_ALPHA);
+    SelectObject(memory, previousBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory);
+    ReleaseDC(nullptr, screen);
+    if (updated != FALSE) ShowWindow(g_state.startupOverlay, SW_SHOWNOACTIVATE);
+    return updated != FALSE;
+}
+
+LRESULT CALLBACK StartupOverlayWindowProc(HWND window, UINT message,
+    WPARAM wParam, LPARAM lParam)
+{
+    if (message == WM_NCHITTEST) return HTTRANSPARENT;
+    if (message == WM_TIMER && wParam == kStartupOverlayTimerId)
+    {
+        UpdateStartupOverlay();
+        return 0;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+bool CreateStartupOverlay()
+{
+    Gdiplus::GdiplusStartupInput startupInput{};
+    if (Gdiplus::GdiplusStartup(&g_state.gdiplusToken, &startupInput, nullptr) !=
+        Gdiplus::Ok) return false;
+
+    const HRSRC resource = FindResourceW(g_state.module,
+        MAKEINTRESOURCEW(kStartupLogoResourceId), RT_RCDATA);
+    const HGLOBAL loaded = resource != nullptr ? LoadResource(g_state.module, resource) : nullptr;
+    const DWORD size = resource != nullptr ? SizeofResource(g_state.module, resource) : 0;
+    const void* data = loaded != nullptr ? LockResource(loaded) : nullptr;
+    if (data == nullptr || size == 0) return false;
+
+    const HGLOBAL copy = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (copy == nullptr) return false;
+    void* copyData = GlobalLock(copy);
+    if (copyData == nullptr)
+    {
+        GlobalFree(copy);
+        return false;
+    }
+    std::memcpy(copyData, data, size);
+    GlobalUnlock(copy);
+    if (FAILED(CreateStreamOnHGlobal(copy, TRUE, &g_state.startupLogoStream)))
+    {
+        GlobalFree(copy);
+        return false;
+    }
+    g_state.startupLogo = Gdiplus::Bitmap::FromStream(
+        g_state.startupLogoStream, FALSE);
+    if (g_state.startupLogo == nullptr ||
+        g_state.startupLogo->GetLastStatus() != Gdiplus::Ok) return false;
+
+    WNDCLASSEXW windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.lpfnWndProc = StartupOverlayWindowProc;
+    windowClass.hInstance = g_state.module;
+    windowClass.lpszClassName = kStartupOverlayClassName;
+    if (RegisterClassExW(&windowClass) == 0 &&
+        GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
+
+    g_state.startupOverlay = CreateWindowExW(
+        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE |
+        WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        kStartupOverlayClassName, L"", WS_POPUP, 0, 0,
+        static_cast<int>(g_state.startupLogo->GetWidth()),
+        static_cast<int>(g_state.startupLogo->GetHeight()),
+        nullptr, nullptr, g_state.module, nullptr);
+    return g_state.startupOverlay != nullptr;
+}
+
+void DestroyStartupOverlay()
+{
+    if (g_state.startupOverlay != nullptr)
+    {
+        KillTimer(g_state.startupOverlay, kStartupOverlayTimerId);
+        DestroyWindow(g_state.startupOverlay);
+        g_state.startupOverlay = nullptr;
+    }
+    UnregisterClassW(kStartupOverlayClassName, g_state.module);
+    delete g_state.startupLogo;
+    g_state.startupLogo = nullptr;
+    if (g_state.startupLogoStream != nullptr)
+    {
+        g_state.startupLogoStream->Release();
+        g_state.startupLogoStream = nullptr;
+    }
+    if (g_state.gdiplusToken != 0)
+    {
+        Gdiplus::GdiplusShutdown(g_state.gdiplusToken);
+        g_state.gdiplusToken = 0;
+    }
+}
+
+void ShowStartupOverlay()
+{
+    if (g_state.startupOverlay == nullptr || g_state.startupLogo == nullptr ||
+        g_state.startupOverlayShown) return;
+    RECT gameRect{};
+    if (g_state.gameWindow == nullptr || !GetWindowRect(g_state.gameWindow, &gameRect))
+    {
+        gameRect.left = 0;
+        gameRect.top = 0;
+        gameRect.right = GetSystemMetrics(SM_CXSCREEN);
+        gameRect.bottom = GetSystemMetrics(SM_CYSCREEN);
+    }
+    const int height = static_cast<int>(g_state.startupLogo->GetHeight());
+    const int width = static_cast<int>(g_state.startupLogo->GetWidth());
+    g_state.startupOverlayTargetLeft = gameRect.left + kStartupOverlayLeftMargin;
+    g_state.startupOverlayStartLeft = gameRect.left - width;
+    g_state.startupOverlayTop = gameRect.bottom - height - kStartupOverlayBottomMargin;
+    g_state.startupOverlayStartTick = GetTickCount64();
+    g_state.startupOverlayShown = true;
+    SetTimer(g_state.startupOverlay, kStartupOverlayTimerId,
+        kStartupOverlayFrameMs, nullptr);
+    UpdateStartupOverlay();
+}
+
+void UpdateStartupOverlay()
+{
+    if (g_state.startupOverlay == nullptr || !g_state.startupOverlayShown) return;
+    constexpr ULONGLONG totalMs =
+        kStartupSlideInMs + kStartupHoldMs + kStartupSlideOutMs;
+    const ULONGLONG elapsed = GetTickCount64() - g_state.startupOverlayStartTick;
+    if (elapsed >= totalMs)
+    {
+        KillTimer(g_state.startupOverlay, kStartupOverlayTimerId);
+        ShowWindow(g_state.startupOverlay, SW_HIDE);
+        return;
+    }
+
+    int left = g_state.startupOverlayTargetLeft;
+    if (elapsed < kStartupSlideInMs)
+    {
+        const float progress = SmoothStep(static_cast<float>(elapsed) /
+            static_cast<float>(kStartupSlideInMs));
+        left = g_state.startupOverlayStartLeft + static_cast<int>(std::lround(
+            (g_state.startupOverlayTargetLeft - g_state.startupOverlayStartLeft) * progress));
+    }
+    else if (elapsed >= kStartupSlideInMs + kStartupHoldMs)
+    {
+        const ULONGLONG outElapsed = elapsed - kStartupSlideInMs - kStartupHoldMs;
+        const float progress = SmoothStep(static_cast<float>(outElapsed) /
+            static_cast<float>(kStartupSlideOutMs));
+        left = g_state.startupOverlayTargetLeft + static_cast<int>(std::lround(
+            (g_state.startupOverlayStartLeft - g_state.startupOverlayTargetLeft) * progress));
+    }
+    if (!IsGameForeground())
+    {
+        ShowWindow(g_state.startupOverlay, SW_HIDE);
+        return;
+    }
+    RenderStartupOverlay(left, g_state.startupOverlayTop, 255);
+}
+
 void PollSensitivityControls()
 {
     if (!IsGameForeground())
@@ -710,8 +1019,10 @@ void ApplySelectedScale(float scale, float appliedTarget)
 {
     g_state.selectedScale = scale;
     *reinterpret_cast<volatile float*>(g_state.cave + kSelectedScaleOffset) = scale;
+    const float rawAdsReference = g_state.lastModeJog ?
+        kStandingRawAdsReference : kStandingWalkRawAdsReference;
     const float adsMultiplier = StandingAdsForTarget(appliedTarget) /
-        kStandingRawAdsReference;
+        rawAdsReference;
     *reinterpret_cast<volatile float*>(g_state.cave + kAdsMultiplierOffset) = adsMultiplier;
 }
 
@@ -918,7 +1229,7 @@ bool IsWalkJogKeyCandidate(DWORD virtualKey)
         virtualKey != VK_SHIFT && virtualKey != VK_LSHIFT && virtualKey != VK_RSHIFT &&
         virtualKey != static_cast<DWORD>(g_state.sensitivityDownKey) &&
         virtualKey != static_cast<DWORD>(g_state.sensitivityDisplayKey) &&
-        virtualKey != static_cast<DWORD>(g_state.sensitivityUpKey) && virtualKey != VK_F9;
+        virtualKey != static_cast<DWORD>(g_state.sensitivityUpKey);
 }
 
 void RecordPhysicalKey(DWORD virtualKey, DWORD scanCode, bool extended)
@@ -982,99 +1293,6 @@ void RefreshStanceState()
     if (g_state.modeKnown) ApplyCurrentAppliedTarget();
 }
 
-const char* StanceName(Stance stance)
-{
-    switch (stance)
-    {
-    case Stance::Standing: return "standing";
-    case Stance::Crouched: return "crouched";
-    case Stance::Prone: return "prone";
-    default: return "unknown";
-    }
-}
-
-void CaptureAdsProfileSnapshot()
-{
-    if (g_state.adsProbePath.empty() || g_state.cave == nullptr) return;
-    float rawAds = 0.0f;
-    float adsMultiplier = 1.0f;
-    std::array<float, 4> vector{};
-    std::uintptr_t adsOwner = 0;
-    std::uintptr_t movementOwner = 0;
-    std::uintptr_t stateObject = 0;
-    std::uint8_t holsterCandidate = 0xFF;
-    std::uintptr_t controlOwner = 0;
-    std::uintptr_t controlState = 0;
-    std::array<std::uint8_t, 256> controlStateBytes{};
-    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsRawOffset), rawAds);
-    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsMultiplierOffset), adsMultiplier);
-    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsVectorOffset), vector);
-    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kAdsOwnerOffset), adsOwner);
-    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kProbeOwnerOffset), movementOwner);
-    if (TryReadValue(movementOwner + 0x38, stateObject))
-        TryReadValue(stateObject + 0x9C, holsterCandidate);
-    TryReadValue(reinterpret_cast<std::uintptr_t>(g_state.cave + kControlOwnerOffset), controlOwner);
-    TryReadValue(controlOwner + 0x18, controlState);
-    const bool controlStateReadable = TryReadValue(controlState, controlStateBytes);
-    const ULONGLONG recentKeyAge = g_state.recentPhysicalKeyTick == 0 ?
-        ~ULONGLONG{0} : GetTickCount64() - g_state.recentPhysicalKeyTick;
-
-    SYSTEMTIME time{};
-    GetLocalTime(&time);
-    std::array<char, 768> line{};
-    const int length = sprintf_s(line.data(), line.size(),
-        "%04u-%02u-%02u %02u:%02u:%02u.%03u stance=%s ads_key=%d override=%d moving=%d "
-        "target=%.6f applied=%.6f scale=%.6f raw_ads=%.9g ads_multiplier=%.9g selected_ads=%.9g "
-        "raw_magnitude=%.9g mode=%s ads_owner=0x%llX movement_owner=0x%llX "
-        "state_object=0x%llX holster_candidate=%u learned_vk=%d learned_scan=%lu "
-        "recent_vk=%d recent_age_ms=%llu auto_pending=%d control_owner=0x%llX control_state=0x%llX "
-        "vector=[%.9g,%.9g,%.9g,%.9g]\r\n",
-        time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
-        time.wSecond, time.wMilliseconds, StanceName(g_state.stance),
-        (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ? 1 : 0,
-        g_state.adsOverrideEnabled ? 1 : 0, IsMoving() ? 1 : 0,
-        g_state.currentTarget, g_state.appliedTarget, g_state.selectedScale,
-        rawAds, adsMultiplier, rawAds * adsMultiplier, g_state.lastRawMagnitude,
-        g_state.lastModeJog ? "jog" : "walk",
-        static_cast<unsigned long long>(adsOwner),
-        static_cast<unsigned long long>(movementOwner),
-        static_cast<unsigned long long>(stateObject), static_cast<unsigned>(holsterCandidate),
-        g_state.learnedWalkJogVk, static_cast<unsigned long>(g_state.learnedWalkJogScan),
-        g_state.recentPhysicalVk, static_cast<unsigned long long>(recentKeyAge),
-        g_state.automaticGaitPending ? 1 : 0,
-        static_cast<unsigned long long>(controlOwner),
-        static_cast<unsigned long long>(controlState),
-        vector[0], vector[1], vector[2], vector[3]);
-    if (length <= 0) return;
-
-    const HANDLE file = CreateFileW(g_state.adsProbePath.c_str(), FILE_APPEND_DATA,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return;
-    DWORD written = 0;
-    WriteFile(file, line.data(), static_cast<DWORD>(length), &written, nullptr);
-    if (controlStateReadable)
-    {
-        std::array<char, 544> stateLine{};
-        int stateLength = sprintf_s(stateLine.data(), stateLine.size(), "control_state_bytes=");
-        for (const std::uint8_t byte : controlStateBytes)
-        {
-            if (stateLength < 0 || stateLength + 2 >= static_cast<int>(stateLine.size())) break;
-            const int appended = sprintf_s(stateLine.data() + stateLength,
-                stateLine.size() - static_cast<std::size_t>(stateLength), "%02X", byte);
-            if (appended != 2) break;
-            stateLength += appended;
-        }
-        if (stateLength > 0 && stateLength + 2 < static_cast<int>(stateLine.size()))
-        {
-            stateLine[stateLength++] = '\r';
-            stateLine[stateLength++] = '\n';
-            WriteFile(file, stateLine.data(), static_cast<DWORD>(stateLength), &written, nullptr);
-        }
-    }
-    CloseHandle(file);
-}
-
 bool AdsOverrideAllowed(bool adsNow)
 {
     return adsNow && g_state.stance != Stance::Unknown;
@@ -1126,9 +1344,9 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam)
                     const float previousTarget = g_state.currentTarget;
                     const bool crossesGait = TargetIsJog(next) != TargetIsJog(previousTarget);
                     const bool desiredJog = TargetIsJog(next);
-                    // Until a binding has been learned, stop at the native
-                    // holstered boundary. One ordinary user toggle teaches the
-                    // binding and keeps the fallback predictable.
+                    // One ordinary physical toggle teaches the configured key.
+                    // Until then, keep holstered movement on the current side of
+                    // the native gait boundary instead of guessing a binding.
                     if (holstered && crossesGait && desiredJog != g_state.lastModeJog &&
                         g_state.learnedWalkJogVk == 0) return 1;
                     g_state.currentTarget = next;
@@ -1173,9 +1391,6 @@ void PollGameplayState()
     ReleaseInjectedKeyIfDue();
     if (!IsGameForeground()) return;
     PollPhysicalKeyCandidates();
-    const bool adsProbeDown = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
-    if (adsProbeDown && !g_state.adsProbeHeld) CaptureAdsProfileSnapshot();
-    g_state.adsProbeHeld = adsProbeDown;
     const bool moving = IsMoving();
     const bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
@@ -1348,11 +1563,6 @@ bool BuildTrampoline()
         control += count;
     };
     std::int32_t relative = 0;
-    const std::uint8_t storeControlOwner[] = { 0x48, 0x89, 0x0D };
-    controlAppend(storeControlOwner, sizeof(storeControlOwner));
-    relative = static_cast<std::int32_t>((caveAddress + kControlOwnerOffset) -
-        (caveAddress + control + 4));
-    controlAppend(&relative, sizeof(relative));
     const int controlCallOffset = control;
     const std::uint8_t call = 0xE8;
     controlAppend(&call, 1);
@@ -1400,20 +1610,13 @@ bool BuildTrampoline()
             (caveAddress + dataOffset) - (caveAddress + ads + 4));
         adsAppend(&displacement, sizeof(displacement));
     };
-    const std::uint8_t storeOwner[] = { 0x48, 0x89, 0x0D };
-    adsRip(storeOwner, sizeof(storeOwner), kAdsOwnerOffset);
-    const std::uint8_t preserveStack[] = { 0x48, 0x83, 0xEC, 0x10, 0x0F, 0x11, 0x04, 0x24, 0x0F, 0x10, 0x44, 0x24, 0x58 };
-    adsAppend(preserveStack, sizeof(preserveStack));
-    const std::uint8_t storeVector[] = { 0x0F, 0x11, 0x05 };
-    adsRip(storeVector, sizeof(storeVector), kAdsVectorOffset);
-    const std::uint8_t restoreStackAndFlags[] = { 0x0F, 0x10, 0x04, 0x24, 0x48, 0x83, 0xC4, 0x10, 0x9C };
-    adsAppend(restoreStackAndFlags, sizeof(restoreStackAndFlags));
-    const std::uint8_t storeRawAds[] = { 0xF3, 0x0F, 0x11, 0x3D };
-    adsRip(storeRawAds, sizeof(storeRawAds), kAdsRawOffset);
+    const std::uint8_t preserveFlags[] = { 0x9C };
+    adsAppend(preserveFlags, sizeof(preserveFlags));
     const std::uint8_t compareEnabled[] = { 0x83, 0x3D };
     adsAppend(compareEnabled, sizeof(compareEnabled));
     relative = static_cast<std::int32_t>((caveAddress + kAdsEnabledOffset) - (caveAddress + ads + 5));
     adsAppend(&relative, sizeof(relative));
+
     const std::uint8_t enabledTail[] = { 0x00, 0x74, 8 };
     adsAppend(enabledTail, sizeof(enabledTail));
     const std::uint8_t multiplyRawAds[] = { 0xF3, 0x0F, 0x59, 0x3D };
@@ -1446,9 +1649,6 @@ DWORD WINAPI RuntimeWorker(void*)
     const std::wstring hostPath = ModulePath(nullptr);
     if (_wcsicmp(FileName(hostPath).c_str(), L"GRW.exe") != 0) return 1;
     LoadSettings();
-    const std::wstring moduleDirectory = DirectoryName(ModulePath(g_state.module));
-    if (!moduleDirectory.empty())
-        g_state.adsProbePath = moduleDirectory + L"\\BetterMovementForKBM-ads-profile.log";
     g_state.imageBase = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     if (g_state.imageBase == 0) return 2;
     const std::size_t imageSize = ImageSize(g_state.imageBase);
@@ -1507,14 +1707,9 @@ DWORD WINAPI RuntimeWorker(void*)
         return 9;
     }
 
-    int stableForegroundTicks = 0;
-    while (stableForegroundTicks < 100)
-    {
-        stableForegroundTicks = IsGameForeground() ? stableForegroundTicks + 1 : 0;
-        Sleep(100);
-    }
-    g_state.gameWindow = GetForegroundWindow();
+    g_state.gameWindow = WaitForStableGameWindow();
     CreateSensitivityOverlay();
+    CreateStartupOverlay();
     g_state.mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHook, g_state.module, 0);
     g_state.keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHook, g_state.module, 0);
     g_state.timer = SetTimer(nullptr, 1, 50, nullptr);
@@ -1523,11 +1718,13 @@ DWORD WINAPI RuntimeWorker(void*)
         if (g_state.timer != 0) KillTimer(nullptr, g_state.timer);
         if (g_state.mouseHook != nullptr) UnhookWindowsHookEx(g_state.mouseHook);
         if (g_state.keyboardHook != nullptr) UnhookWindowsHookEx(g_state.keyboardHook);
+        DestroyStartupOverlay();
         DestroySensitivityOverlay();
         RestorePatches();
         VirtualFree(g_state.cave, 0, MEM_RELEASE);
         return 10;
     }
+    ShowStartupOverlay();
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0)
@@ -1547,6 +1744,7 @@ DWORD WINAPI RuntimeWorker(void*)
     UnhookWindowsHookEx(g_state.mouseHook);
     UnhookWindowsHookEx(g_state.keyboardHook);
     SaveSettingsIfDue(true);
+    DestroyStartupOverlay();
     DestroySensitivityOverlay();
     RestorePatches();
     VirtualFree(g_state.cave, 0, MEM_RELEASE);

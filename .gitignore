@@ -39,6 +39,7 @@
 *.userosscache
 *.sln.docstates
 /TODO.md
+post_draft.md
 
 # Temporary files
 *.tmp

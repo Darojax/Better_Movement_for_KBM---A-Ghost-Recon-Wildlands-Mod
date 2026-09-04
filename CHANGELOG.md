@@ -2,6 +2,16 @@
 
 All notable public changes to Better Movement for KBM are documented here.
 
+## 2.1.2 - 2026-09-04
+
+- Rebalanced ADS movement by stance and active gait so aiming remains faster than vanilla where appropriate but never accelerates the player beyond the corresponding non-ADS speed.
+- Added a dedicated holstered movement curve matching the smaller set of useful speeds exposed by the game's holstered animation system.
+- Added seamless mouse-wheel crossing between holstered walking and jogging after the mod learns the player's configured Walk/Jog key once.
+- Persisted the learned Walk/Jog binding and automatically relearn it when the player presses a new binding while moving.
+- Added a one-time startup logo confirming successful initialization after the full GRW game window appears.
+- Confined the startup animation to the game window, including multi-monitor setups.
+- Removed temporary diagnostic probes and logging used during movement calibration.
+
 ## 2.1.1 - 2026-08-18
 
 - Added brief time-based acceleration and deceleration smoothing for wheel adjustments above sensitivity 50.

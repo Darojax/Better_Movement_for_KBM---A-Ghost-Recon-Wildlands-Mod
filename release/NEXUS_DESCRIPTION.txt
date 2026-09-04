@@ -4,7 +4,7 @@ Better Movement for KBM gives mouse-and-keyboard players smooth, granular moveme
 
 Scroll the mouse wheel to transition naturally between a very slow walk and full jogging speed. Selections made while standing still apply when movement begins. Aim-Down-Sight and crouched movement speeds are also adjusted to feel more consistent with normal movement.
 
-Version 2.1.1 is a lightweight native ASI mod. It includes live, persistent wheel-sensitivity adjustment with an in-game slider and configurable shortcuts. At sensitivity settings above 50, larger speed changes are eased briefly to reduce visible acceleration and deceleration jerk without altering the calibrated destination speeds. It requires no separate launcher, .NET runtime, firewall rules, or SayNoToEAC installation.
+Version 2.1.2 is a lightweight native ASI mod. It includes live, persistent wheel-sensitivity adjustment with an in-game slider and configurable shortcuts. ADS movement is balanced by stance and gait, while a dedicated holstered curve provides smoother, more useful speed selection across the game's limited holstered animations. A one-time logo in the lower-left confirms that the mod loaded successfully. It requires no separate launcher, .NET runtime, firewall rules, or SayNoToEAC installation.
 
 [heading][color=#93c47d]Requirements[/color][/heading]
 
@@ -43,7 +43,9 @@ Before playing, open [b]Settings > Key Mapping > Player Combat[/b] and reassign 
 
 Sensitivity ranges from 0 to 100 and is saved automatically. The default is 50. Lower values provide finer speed changes per wheel notch; higher values move through the speed range more quickly. A temporary in-game slider displays the current setting. The F6, F7, and F8 shortcuts can be changed in [b]BetterMovementForKBM.ini[/b].
 
-The mod automatically uses the Walk/Jog key configured inside Ghost Recon Wildlands; it is not hardcoded to X.
+The first time you play, press your configured in-game Walk/Jog key once while moving. The mod learns and saves that binding so mouse-wheel input can cross between the walking and jogging ranges automatically while weapons are holstered. You do not need to repeat this each session. If you later change the binding, press the new key once while moving so the mod can relearn it.
+
+The mod uses the Walk/Jog key configured inside Ghost Recon Wildlands; it is not hardcoded to X.
 
 [heading][color=#93c47d]Compatibility[/color][/heading]
 

@@ -1,10 +1,10 @@
 # Better Movement for KBM — native ASI runtime
 
-This project builds the native x64 runtime used by Better Movement for KBM v2.1.1.
+This project builds the native x64 runtime used by Better Movement for KBM v2.1.2.
 
 The release targets Ghost Recon Wildlands game version `133.1.0.9840374` / Steam build `24669148`. Before changing anything, the ASI verifies every required instruction against that exact executable layout. Unsupported builds are left untouched.
 
-The runtime executes inside `GRW.exe`; it does not use external-process memory APIs or write diagnostic logs. Movement sensitivity and its shortcuts are stored in `BetterMovementForKBM.ini` beside the ASI.
+The runtime executes inside `GRW.exe`; it does not use external-process memory APIs or write diagnostic logs. Movement sensitivity, its shortcuts, and the automatically learned Walk/Jog binding are stored in `BetterMovementForKBM.ini` beside the ASI.
 
 Build the release configuration with Visual Studio's C++ toolchain:
 
